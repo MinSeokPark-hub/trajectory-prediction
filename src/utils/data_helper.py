@@ -1,33 +1,41 @@
 import os
 import pandas as pd
+import logging
+
 from utils.kitti_parser import KittiParser
+from utils.sgan_parser import SGANParser
 
-def load_all_kitti_data(label_dir):
-    parser = KittiParser(fps=10)
-    all_sequences = []
-    
-    # 1. 폴더 내 모든 .txt 파일 목록 가져오기
+logger = logging.getLogger(__name__)
+
+
+def load_all_kitti_data(label_dir: str) -> pd.DataFrame:
+    return _load_all(label_dir, parser=KittiParser(fps=10))
+
+
+def load_all_sgan_data(label_dir: str) -> pd.DataFrame:
+    return _load_all(label_dir, parser=SGANParser(fps=2.5))
+
+
+def _load_all(label_dir: str, parser) -> pd.DataFrame:
     label_files = sorted([f for f in os.listdir(label_dir) if f.endswith('.txt')])
-    print(f"📊 총 {len(label_files)}개의 시퀀스 파일을 발견했습니다.")
+    logger.info(f"{len(label_files)}개 파일 발견: {label_dir}")
 
+    sequences = []
     for file_name in label_files:
         file_path = os.path.join(label_dir, file_name)
-        
-        # 2. 개별 파일 파싱 및 TTC 계산
-        raw_df = parser.parse_label(file_path)
-        
-        if raw_df.empty:
-            continue
-            
-        processed_df = parser.calculate_gt_ttc(raw_df)
-        
-        # 시퀀스 간 구분을 위해 파일명을 prefix로 붙인 새로운 track_id 생성[cite: 1]
-        processed_df['track_id'] = file_name.replace('.txt', '') + "_" + processed_df['track_id'].astype(str)
-        
-        all_sequences.append(processed_df)
+        df = parser.load(file_path)
 
-    # 3. 모든 데이터프레임 하나로 합치기[cite: 1]
-    final_df = pd.concat(all_sequences, ignore_index=True)
-    print(f"✅ 통합 완료: 총 {len(final_df)}개의 보행자 데이터 포인트를 확보했습니다.")
-    
+        if df.empty:
+            continue
+
+        prefix = file_name.replace('.txt', '')
+        df['track_id'] = prefix + '_' + df['track_id'].astype(str)
+        sequences.append(df)
+
+    if not sequences:
+        logger.error(f"로드된 데이터 없음: {label_dir}")
+        return pd.DataFrame()
+
+    final_df = pd.concat(sequences, ignore_index=True)
+    logger.info(f"통합 완료: {len(final_df)}개 데이터 포인트")
     return final_df
