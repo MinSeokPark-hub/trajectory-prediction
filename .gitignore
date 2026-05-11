@@ -1,0 +1,20 @@
+# Datasets & Weights
+data/
+datasets/
+*.pth
+*.pt
+*.onnx
+
+# Python Caches & Virtual Environments
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+.env
+
+# OS Files
+.DS_Store
+*.sh
+*.sh
