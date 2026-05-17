@@ -83,15 +83,20 @@ class NuScenesParser(BaseParser):
                         'pos_y':    rel_y,
                         'pos_z':    depth,
                         # nuScenes 전용
-                        'obj_l':    obj_l,      # 길이 (투영용)
-                        'obj_z':    obj_z,      # 절대 z (지면 기준 높이)
-                        'abs_x':    obj_x,      # 절대 x (투영용)
-                        'abs_y':    obj_y,      # 절대 y (투영용)
+                        'obj_l':    obj_l,
+                        'obj_z':    obj_z,
+                        'abs_x':    obj_x,
+                        'abs_y':    obj_y,
                         'ego_x':    ego_x,
                         'ego_y':    ego_y,
                         'ego_z':    ego_z,
                         'img_path': img_path,
                         'scene':    scene_name,
+                        # 객체 회전 (quaternion)
+                        'rot_w':    ann['rotation'][0],
+                        'rot_x':    ann['rotation'][1],
+                        'rot_y':    ann['rotation'][2],
+                        'rot_z':    ann['rotation'][3],
                     })
 
                 sample_token = sample['next']

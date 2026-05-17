@@ -77,11 +77,7 @@ def get_color(ttc, ttc_threshold, warning_threshold):
         return (255, 165, 0), "orange", "Warning"
     return (0, 200, 0), "green", "Safe"
 
-def project_to_image(nusc, sample_token, obj_translation, obj_size):
-    """
-    객체의 3D 바운딩박스 8개 꼭짓점을 카메라 이미지에 투영해
-    객체를 완전히 감싸는 2D 박스(x1,y1,x2,y2) 반환
-    """
+def project_to_image(nusc, sample_token, obj_translation, obj_size, obj_rotation):
     try:
         sample    = nusc.get('sample', sample_token)
         cam_token = sample['data']['CAM_FRONT']
@@ -95,20 +91,26 @@ def project_to_image(nusc, sample_token, obj_translation, obj_size):
         cam_rot   = Quaternion(cs['rotation']).rotation_matrix
         cam_trans = np.array(cs['translation'])
 
-        w, l, h      = obj_size[0], obj_size[1], obj_size[2]
-        cx, cy, cz   = obj_translation
+        w, l, h    = obj_size[0], obj_size[1], obj_size[2]
+        cx, cy, cz = obj_translation
 
-        # 객체 중심 기준 8개 꼭짓점
-        corners = np.array([
-            [cx + w/2, cy + l/2, cz      ],
-            [cx + w/2, cy - l/2, cz      ],
-            [cx - w/2, cy + l/2, cz      ],
-            [cx - w/2, cy - l/2, cz      ],
-            [cx + w/2, cy + l/2, cz + h  ],
-            [cx + w/2, cy - l/2, cz + h  ],
-            [cx - w/2, cy + l/2, cz + h  ],
-            [cx - w/2, cy - l/2, cz + h  ],
-        ])
+        # 객체 로컬 좌표계 8개 꼭짓점 (중심 기준)
+        half_l, half_w, half_h = l/2, w/2, h/2
+        corners_local = np.array([
+            [+half_l, +half_w, -half_h],
+            [+half_l, -half_w, -half_h],
+            [-half_l, +half_w, -half_h],
+            [-half_l, -half_w, -half_h],
+            [+half_l, +half_w, +half_h],
+            [+half_l, -half_w, +half_h],
+            [-half_l, +half_w, +half_h],
+            [-half_l, -half_w, +half_h],
+        ]).T  # (3, 8)
+
+        # 객체 회전 적용 후 월드 좌표로 이동
+        obj_rot_matrix  = Quaternion(obj_rotation).rotation_matrix
+        corners_rotated = obj_rot_matrix @ corners_local  # (3, 8)
+        corners         = corners_rotated.T + np.array([cx, cy, cz])  # (8, 3)
 
         px_list, py_list = [], []
         for corner in corners:
@@ -298,7 +300,13 @@ if run_simulation:
                             float(obj['obj_l']),
                             float(obj['h']),
                         ]
-                        result = project_to_image(nusc, sample_token, obj_translation, obj_size)
+                        obj_rotation = [
+                            float(obj['rot_w']),
+                            float(obj['rot_x']),
+                            float(obj['rot_y']),
+                            float(obj['rot_z']),
+                        ]
+                        result = project_to_image(nusc, sample_token, obj_translation, obj_size, obj_rotation)
                         if result:
                             x1, y1, x2, y2 = result
                             label = f"{obj['type']} {ttc:.1f}s"
