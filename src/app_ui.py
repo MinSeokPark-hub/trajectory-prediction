@@ -5,62 +5,170 @@ import os
 import sys
 import time
 import glob
+import numpy as np
 from datetime import datetime, timezone, timedelta
-from PIL import Image
+from PIL import Image, ImageDraw
+from pyquaternion import Quaternion
 
-# 프로젝트 루트 경로 추가
 sys.path.append(os.path.abspath("/workspace/minseok_park/"))
 from src.utils.sgan_parser import SGANParser
+from src.utils.nuscenes_parser import NuScenesParser
 from src.inference_engine import InferenceEngine
 
-# --- 1. 페이지 설정 및 스타일 ---
 st.set_page_config(page_title="경로예측 및 충돌예측 연구", layout="wide")
 st.title("🛰️ 이미지 및 GPS데이터 기반의 이동체 경로예측 및 충돌예측 연구")
 
-# --- KST (한국 표준시) 설정 ---
 KST = timezone(timedelta(hours=9))
 
-# --- 2. 사이드바: 설정 및 컨트롤 ---
 st.sidebar.header("🛠️ System Settings")
-ttc_threshold = st.sidebar.slider("Danger TTC Threshold (s)", 0.5, 3.0, 1.5, 0.1)
+dataset_mode      = st.sidebar.radio("📂 데이터셋 선택", ["nuScenes", "ETH/UCY (SGAN)"])
+ttc_threshold     = st.sidebar.slider("Danger TTC Threshold (s)",  0.5, 3.0, 1.5, 0.1)
 warning_threshold = st.sidebar.slider("Warning TTC Threshold (s)", 3.0, 5.0, 4.0, 0.5)
-
+frame_skip        = st.sidebar.slider("Frame Skip (빠를수록 ↑)", 1, 5, 1, 1)
+sleep_time        = st.sidebar.slider("Frame Delay (s)", 0.0, 1.0, 0.3, 0.05)
 st.sidebar.markdown("---")
-run_simulation = st.sidebar.button("▶️ Start Simulation", use_container_width=True)
+col_btn1, col_btn2 = st.sidebar.columns(2)
+run_simulation  = col_btn1.button("▶️ 시작", use_container_width=True)
+stop_simulation = col_btn2.button("⏹️ 정지", use_container_width=True)
 
-# --- 3. 데이터 및 엔진 초기화 ---
 @st.cache_resource
-def init_system():
-    parser = SGANParser(fps=2.5)
+def init_nuscenes():
+    DATAROOT = "/workspace/minseok_park/data/nuscenes/v1.0-mini"
     engine = InferenceEngine()
-    
+    parser = NuScenesParser(dataroot=DATAROOT, version='v1.0-mini', fps=2.0)
+    df = parser.load()
+    from nuscenes.nuscenes import NuScenes
+    nusc = NuScenes(version='v1.0-mini', dataroot=DATAROOT, verbose=False)
+    return engine, df, nusc, DATAROOT
+
+@st.cache_resource
+def init_sgan():
+    engine = InferenceEngine()
+    parser = SGANParser(fps=2.5)
     train_dir = "/workspace/minseok_park/data/sgan/datasets/eth/train/"
     txt_files = glob.glob(os.path.join(train_dir, "*.txt"))
-    
     if not txt_files:
-        st.error(f"❌ 에러: {train_dir} 경로에 텍스트 데이터 파일이 없습니다!")
+        st.error(f"❌ {train_dir} 에 데이터 없음")
         st.stop()
-        
-    data_path = txt_files[0]
-    df = parser.parse_label(data_path)
-    df = parser.calculate_gt_ttc(df)
-    return parser, engine, df
+    df = parser.load(txt_files[0])
+    return engine, df
 
-parser, engine, full_df = init_system()
+def get_color(ttc, ttc_threshold, warning_threshold):
+    if ttc <= ttc_threshold:
+        return (255, 0, 0), "red", "Danger"
+    elif ttc <= warning_threshold:
+        return (255, 165, 0), "orange", "Warning"
+    return (0, 200, 0), "green", "Safe"
 
-# --- 4. 메인 대시보드 레이아웃 (듀얼 뷰) ---
-col_radar, col_cam = st.columns(2)
+def project_to_image(nusc, sample_token, obj_translation, obj_size):
+    """
+    객체의 3D 바운딩박스 8개 꼭짓점을 카메라 이미지에 투영해
+    객체를 완전히 감싸는 2D 박스(x1,y1,x2,y2) 반환
+    """
+    try:
+        sample    = nusc.get('sample', sample_token)
+        cam_token = sample['data']['CAM_FRONT']
+        cam_data  = nusc.get('sample_data', cam_token)
+        cs        = nusc.get('calibrated_sensor', cam_data['calibrated_sensor_token'])
+        ego_pose  = nusc.get('ego_pose', cam_data['ego_pose_token'])
 
-with col_radar:
-    st.subheader("📡 Bird's Eye View (Radar)")
-    radar_placeholder = st.empty()
+        K         = np.array(cs['camera_intrinsic'])
+        ego_rot   = Quaternion(ego_pose['rotation']).rotation_matrix
+        ego_trans = np.array(ego_pose['translation'])
+        cam_rot   = Quaternion(cs['rotation']).rotation_matrix
+        cam_trans = np.array(cs['translation'])
 
-with col_cam:
-    st.subheader("📷 Camera View (Bounding Box & TTC)")
-    cam_placeholder = st.empty()
+        w, l, h      = obj_size[0], obj_size[1], obj_size[2]
+        cx, cy, cz   = obj_translation
+
+        # 객체 중심 기준 8개 꼭짓점
+        corners = np.array([
+            [cx + w/2, cy + l/2, cz      ],
+            [cx + w/2, cy - l/2, cz      ],
+            [cx - w/2, cy + l/2, cz      ],
+            [cx - w/2, cy - l/2, cz      ],
+            [cx + w/2, cy + l/2, cz + h  ],
+            [cx + w/2, cy - l/2, cz + h  ],
+            [cx - w/2, cy + l/2, cz + h  ],
+            [cx - w/2, cy - l/2, cz + h  ],
+        ])
+
+        px_list, py_list = [], []
+        for corner in corners:
+            p_ego = ego_rot.T @ (corner - ego_trans)
+            p_cam = cam_rot.T @ (p_ego  - cam_trans)
+            if p_cam[2] < 0.5:
+                continue
+            p_img = K @ p_cam
+            px_list.append(int(p_img[0] / p_img[2]))
+            py_list.append(int(p_img[1] / p_img[2]))
+
+        if not px_list:
+            return None
+
+        # 실제 이미지 크기 가져오기
+        img_path = os.path.join(nusc.dataroot, cam_data['filename'])
+        img      = Image.open(img_path)
+        img_w, img_h = img.size
+
+        x1 = max(0,     min(px_list))
+        y1 = max(0,     min(py_list))
+        x2 = min(img_w, max(px_list))
+        y2 = min(img_h, max(py_list))
+
+        if x2 - x1 < 5 or y2 - y1 < 5:
+            return None
+
+        return x1, y1, x2, y2
+
+    except Exception:
+        return None
+
+def get_cam_image_path(nusc, sample_token, dataroot):
+    try:
+        sample    = nusc.get('sample', sample_token)
+        cam_token = sample['data']['CAM_FRONT']
+        cam_data  = nusc.get('sample_data', cam_token)
+        return os.path.join(dataroot, cam_data['filename'])
+    except Exception:
+        return None
+
+def draw_boxes_on_image(img_path, boxes):
+    img  = Image.open(img_path).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    for (x1, y1, x2, y2, label, color) in boxes:
+        x1, x2 = min(x1, x2), max(x1, x2)
+        y1, y2 = min(y1, y2), max(y1, y2)
+        if x2 - x1 < 5 or y2 - y1 < 5:
+            continue
+        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+        draw.rectangle([x1, max(0, y1-20), x1+len(label)*8, y1], fill=color)
+        draw.text((x1+2, max(2, y1-18)), label, fill=(255, 255, 255))
+    return img
+
+if dataset_mode == "nuScenes":
+    engine, full_df, nusc, DATAROOT = init_nuscenes()
+else:
+    engine, full_df = init_sgan()
+
+if dataset_mode == "nuScenes":
+    col_map, col_cam = st.columns(2)
+    with col_map:
+        st.subheader("🗺️ GPS Map View (자차 중심)")
+        map_placeholder = st.empty()
+    with col_cam:
+        st.subheader("📷 Camera View (CAM_FRONT)")
+        cam_placeholder = st.empty()
+else:
+    col_radar, col_cam = st.columns(2)
+    with col_radar:
+        st.subheader("📡 Bird's Eye View (Radar)")
+        map_placeholder = st.empty()
+    with col_cam:
+        st.subheader("📷 Camera View")
+        cam_placeholder = st.empty()
 
 st.markdown("---")
-
 col_report, col_log = st.columns([1, 2])
 with col_report:
     st.subheader("⚠️ Risk Analysis Report")
@@ -69,113 +177,237 @@ with col_log:
     st.subheader("📝 Detection Log")
     log_placeholder = st.empty()
 
-# --- 5. 시뮬레이션 로직 ---
 if run_simulation:
-    frames = sorted(full_df['frame'].unique())
     detection_logs = []
 
-    for f_idx in frames:
-        current_df = full_df[full_df['frame'] == f_idx]
-        
-        fig_radar = go.Figure()
-        fig_cam = go.Figure()
-        risk_peds = []
+    if dataset_mode == "nuScenes":
+        # scene+frame → sample_token 매핑
+        scene_frame_tokens = {}
+        for scene in nusc.scene:
+            token = scene['first_sample_token']
+            f = 0
+            while token:
+                scene_frame_tokens[(scene['name'], f)] = token
+                sample = nusc.get('sample', token)
+                token  = sample['next']
+                f += 1
 
-        # 🌟 실제 카메라 영상 이미지 로드 로직
-        # 해당 프레임 번호의 사진(예: 0240.png)을 찾습니다.
-        frame_img_path = f"/workspace/minseok_park/data/sgan/datasets/eth/frames/{int(f_idx):04d}.png" 
-        
-        if os.path.exists(frame_img_path):
-            img = Image.open(frame_img_path)
-            # 이미지가 존재하면 Plotly 차트 배경에 꽉 차게 깔아줍니다.
-            fig_cam.add_layout_image(
-                dict(
+        # scene 순서대로, 각 scene의 프레임 순서대로 순회
+        scenes = full_df['scene'].unique()
+        for scene_name in scenes:
+            scene_df = full_df[full_df['scene'] == scene_name]
+            frames   = sorted(scene_df['frame'].unique())[::frame_skip]
+
+            for f_idx in frames:
+                if stop_simulation:
+                    st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
+                    break
+
+                current_df = scene_df[scene_df['frame'] == f_idx].copy()
+                if current_df.empty:
+                    continue
+
+                current_df   = current_df.nsmallest(10, 'depth')
+                fig_map      = go.Figure()
+                risk_objs    = []
+                ego_x        = current_df.iloc[0]['ego_x']
+                ego_y        = current_df.iloc[0]['ego_y']
+                sample_token = scene_frame_tokens.get((scene_name, int(f_idx)), None)
+                img_path     = get_cam_image_path(nusc, sample_token, DATAROOT) if sample_token else None
+                boxes_to_draw = []
+
+                fig_map.add_trace(go.Scatter(
+                    x=[0], y=[0],
+                    mode='markers+text',
+                    marker=dict(size=18, color='blue', symbol='triangle-up'),
+                    text=["🚗 EGO"], textposition="top center", name="자차"
+                ))
+
+                for _, obj in current_df.iterrows():
+                    tid     = obj['track_id']
+                    history = full_df[
+                        (full_df['track_id'] == tid) &
+                        (full_df['scene']    == scene_name) &
+                        (full_df['frame']    <= f_idx)
+                    ].tail(5)
+
+                    if len(history) < 2:
+                        continue
+
+                    rel_x = float(obj['pos_x'])
+                    rel_y = float(obj['pos_y'])
+                    depth = float(obj['depth'])
+                    vel   = float(obj['velocity']) if pd.notna(obj.get('velocity')) else 0.0
+                    ttc   = depth / vel if vel > 0.1 else 10.0
+                    ttc   = float(min(max(ttc, 0.1), 10.0))
+
+                    color_rgb, color_str, status = get_color(ttc, ttc_threshold, warning_threshold)
+                    if status == "Danger":
+                        risk_objs.append({"ID": tid, "TTC": f"{ttc:.2f}s", "Status": "🚨 DANGER"})
+
+                    fig_map.add_trace(go.Scatter(
+                        x=[rel_x], y=[rel_y],
+                        mode='markers+text',
+                        marker=dict(size=12, color=color_str,
+                                    line=dict(width=1, color='black')),
+                        text=[f"{obj['type']}<br>{ttc:.1f}s"],
+                        textposition="top center", name=status
+                    ))
+                    fig_map.add_trace(go.Scatter(
+                        x=history['pos_x'].values,
+                        y=history['pos_y'].values,
+                        mode='lines', line=dict(color='gray', width=1),
+                        showlegend=False, opacity=0.5
+                    ))
+
+                    if sample_token and img_path and os.path.exists(img_path):
+                        obj_translation = [
+                            float(obj['abs_x']),
+                            float(obj['abs_y']),
+                            float(obj['obj_z']),
+                        ]
+                        obj_size = [
+                            float(obj['w']),
+                            float(obj['obj_l']),
+                            float(obj['h']),
+                        ]
+                        result = project_to_image(nusc, sample_token, obj_translation, obj_size)
+                        if result:
+                            x1, y1, x2, y2 = result
+                            label = f"{obj['type']} {ttc:.1f}s"
+                            boxes_to_draw.append((x1, y1, x2, y2, label, color_rgb))
+
+                fig_map.update_layout(
+                    xaxis=dict(range=[-15, 15], title="X (m, 자차 기준)"),
+                    yaxis=dict(range=[-5,  15], title="Y (m, 자차 기준)", scaleanchor="x"),
+                    height=500, margin=dict(l=0, r=0, b=0, t=0),
+                    showlegend=False, plot_bgcolor="#e8f4e8"
+                )
+
+                if img_path and os.path.exists(img_path):
+                    rendered_img = draw_boxes_on_image(img_path, boxes_to_draw)
+                    cam_placeholder.image(rendered_img, use_container_width=True)
+                else:
+                    cam_placeholder.info("카메라 이미지 없음")
+
+                map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{scene_name}_{f_idx}")
+
+                if risk_objs:
+                    alert_placeholder.error(f"⚠️ {len(risk_objs)}개의 이동체가 충돌 위험 궤적 내에 있습니다.")
+                else:
+                    alert_placeholder.success("✅ 충돌 위험 없음.")
+
+                if risk_objs:
+                    for p in risk_objs:
+                        current_kst = datetime.now(KST).strftime("%H:%M:%S")
+                        detection_logs.insert(0, {"Time": current_kst, **p})
+                    log_placeholder.dataframe(
+                        pd.DataFrame(detection_logs).head(10),
+                        use_container_width=True
+                    )
+
+                time.sleep(sleep_time)
+
+            if stop_simulation:
+                break
+
+    else:
+        frames = sorted(full_df['frame'].unique())[::frame_skip]
+        for f_idx in frames:
+            if stop_simulation:
+                st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
+                break
+
+            current_df = full_df[full_df['frame'] == f_idx].copy()
+            if current_df.empty:
+                continue
+
+            current_df = current_df.nsmallest(10, 'depth')
+            fig_map    = go.Figure()
+            fig_cam    = go.Figure()
+            risk_objs  = []
+
+            frame_img_path = f"/workspace/minseok_park/data/sgan/datasets/eth/frames/{int(f_idx):04d}.png"
+            if os.path.exists(frame_img_path):
+                img = Image.open(frame_img_path)
+                fig_cam.add_layout_image(dict(
                     source=img, xref="paper", yref="paper",
                     x=0, y=1, sizex=1, sizey=1,
                     sizing="stretch", opacity=1, layer="below"
+                ))
+
+            for _, obj in current_df.iterrows():
+                tid = int(obj['track_id'])
+                history = full_df[
+                    (full_df['track_id'] == tid) &
+                    (full_df['frame'] <= f_idx)
+                ].tail(5)
+                if len(history) < 5:
+                    continue
+
+                pix_input = history[['x_pix', 'y_pix', 'w_pix', 'h_pix', 'pos_z']].values
+                real_3d   = history[['pos_x', 'pos_y', 'pos_z']].values
+                ttc, _    = engine.predict(pix_input, real_3d)
+
+                _, color_str, status = get_color(ttc, ttc_threshold, warning_threshold)
+                if status == "Danger":
+                    risk_objs.append({"ID": tid, "TTC": f"{ttc:.2f}s", "Status": "🚨 DANGER"})
+
+                fig_map.add_trace(go.Scatter(
+                    x=[obj['pos_x']], y=[obj['pos_z']],
+                    mode='markers+text',
+                    marker=dict(size=15, color=color_str,
+                                line=dict(width=2, color='black')),
+                    text=[f"ID:{tid}"], textposition="top center", name=status
+                ))
+                fig_map.add_trace(go.Scatter(
+                    x=history['pos_x'], y=history['pos_z'],
+                    mode='lines', line=dict(color='blue', width=1),
+                    showlegend=False, opacity=0.3
+                ))
+
+                pseudo_x = obj['pos_x'] * 30
+                pseudo_y = 100 - (obj['pos_z'] * 10)
+                fig_cam.add_shape(
+                    type="rect",
+                    x0=pseudo_x-15, y0=pseudo_y-25,
+                    x1=pseudo_x+15, y1=pseudo_y+25,
+                    line=dict(color=color_str, width=3),
+                    fillcolor="rgba(0,0,0,0)"
                 )
+                fig_cam.add_trace(go.Scatter(
+                    x=[pseudo_x], y=[pseudo_y+35],
+                    mode='text', text=[f"ID:{tid} | {ttc:.1f}s"],
+                    textfont=dict(color=color_str, size=14), showlegend=False
+                ))
+
+            fig_map.update_layout(
+                xaxis=dict(range=[-10, 15], title="X (m)"),
+                yaxis=dict(range=[-5,  15], title="Z (m)"),
+                height=500, margin=dict(l=0, r=0, b=0, t=0), showlegend=False
+            )
+            fig_cam.update_layout(
+                xaxis=dict(range=[-300, 400], showgrid=False, zeroline=False, visible=False),
+                yaxis=dict(range=[-50,  200], showgrid=False, zeroline=False, visible=False),
+                height=500, margin=dict(l=0, r=0, b=0, t=0),
+                showlegend=False, plot_bgcolor="#1E1E1E"
             )
 
-        for _, obj in current_df.iterrows():
-            tid = int(obj['track_id'])
-            history = full_df[(full_df['track_id'] == tid) & (full_df['frame'] <= f_idx)].tail(5)
-            
-            if len(history) < 5: continue
-            
-            pix_input = history[['x_pix', 'y_pix', 'w_pix', 'h_pix', 'pos_z']].values
-            real_3d = history[['pos_x', 'pos_y', 'pos_z']].values
-            ttc, _ = engine.predict(pix_input, real_3d)
+            map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{f_idx}")
+            cam_placeholder.plotly_chart(fig_cam, use_container_width=True, key=f"cam_{f_idx}")
 
-            status = "Safe"
-            color = "green"
-            if ttc <= ttc_threshold:
-                status = "Danger"
-                color = "red"
-                risk_peds.append({"ID": tid, "TTC": f"{ttc:.2f}s", "Status": "🚨 DANGER"})
-            elif ttc <= warning_threshold:
-                status = "Warning"
-                color = "orange"
+            if risk_objs:
+                alert_placeholder.error(f"⚠️ {len(risk_objs)}개의 이동체가 충돌 위험 궤적 내에 있습니다.")
+            else:
+                alert_placeholder.success("✅ 충돌 위험 없음.")
 
-            # [1] 레이더 뷰 
-            fig_radar.add_trace(go.Scatter(
-                x=[obj['pos_x']], y=[obj['pos_z']],
-                mode='markers+text', marker=dict(size=15, color=color, line=dict(width=2, color='black')),
-                text=[f"ID:{tid}"], textposition="top center", name=status
-            ))
-            fig_radar.add_trace(go.Scatter(
-                x=history['pos_x'], y=history['pos_z'],
-                mode='lines', line=dict(color='blue', width=1), showlegend=False, opacity=0.3
-            ))
+            if risk_objs:
+                for p in risk_objs:
+                    current_kst = datetime.now(KST).strftime("%H:%M:%S")
+                    detection_logs.insert(0, {"Time": current_kst, **p})
+                log_placeholder.dataframe(
+                    pd.DataFrame(detection_logs).head(10),
+                    use_container_width=True
+                )
 
-            # [2] 카메라 뷰 (테두리 바운딩 박스)
-            pseudo_x = obj['pos_x'] * 30
-            pseudo_y = 100 - (obj['pos_z'] * 10)
-            
-            # 🌟 테두리만 있는 투명한 바운딩 박스
-            fig_cam.add_shape(
-                type="rect",
-                x0=pseudo_x - 15, y0=pseudo_y - 25,
-                x1=pseudo_x + 15, y1=pseudo_y + 25,
-                line=dict(color=color, width=3),
-                fillcolor="rgba(0,0,0,0)" # 안쪽을 투명하게!
-            )
-            
-            # 머리 위 TTC 텍스트
-            fig_cam.add_trace(go.Scatter(
-                x=[pseudo_x], y=[pseudo_y + 35],
-                mode='text', text=[f"ID:{tid} | {ttc:.1f}s"],
-                textfont=dict(color=color, size=14, weight="bold"),
-                showlegend=False
-            ))
-
-        # 레이아웃 업데이트
-        fig_radar.update_layout(
-            xaxis=dict(range=[-10, 15], title="X Position (m)"),
-            yaxis=dict(range=[-5, 15], title="Z Position (m)"),
-            height=500, margin=dict(l=0, r=0, b=0, t=0), showlegend=False
-        )
-        
-        # 카메라 뷰 배경 (사진이 없을 때는 어두운 회색)
-        fig_cam.update_layout(
-            xaxis=dict(range=[-300, 400], showgrid=False, zeroline=False, visible=False),
-            yaxis=dict(range=[-50, 200], showgrid=False, zeroline=False, visible=False),
-            height=500, margin=dict(l=0, r=0, b=0, t=0), showlegend=False,
-            plot_bgcolor="#1E1E1E" 
-        )
-
-        radar_placeholder.plotly_chart(fig_radar, use_container_width=True, key=f"radar_{f_idx}")
-        cam_placeholder.plotly_chart(fig_cam, use_container_width=True, key=f"cam_{f_idx}")
-
-        # 리포트 및 로그 업데이트 (KST 적용)
-        if risk_peds:
-            alert_placeholder.error(f"⚠️ {len(risk_peds)}개의 이동체가 충돌 위험 궤적 내에 있습니다.")
-        else:
-            alert_placeholder.success("✅ 충돌 위험 없음.")
-
-        if risk_peds:
-            for p in risk_peds:
-                current_kst = datetime.now(KST).strftime("%H:%M:%S")
-                detection_logs.insert(0, {"Time": current_kst, **p})
-            log_placeholder.dataframe(pd.DataFrame(detection_logs).head(10), use_container_width=True)
-
-        time.sleep(0.1)
+            time.sleep(sleep_time)

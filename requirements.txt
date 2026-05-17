@@ -1,0 +1,28 @@
+# Deep Learning
+torch==2.10.0
+torchvision==0.25.0
+
+# Object Detection
+ultralytics==8.4.24
+
+# API Server
+fastapi==0.135.1
+uvicorn==0.42.0
+pydantic==2.12.5
+
+# UI
+streamlit
+
+# Data Processing
+numpy==2.4.3
+pandas
+scikit-learn
+joblib
+
+# Image / Video
+opencv-python==4.13.0.92
+Pillow==12.1.1
+
+# Visualization
+matplotlib==3.10.8
+plotly

@@ -1,20 +1,32 @@
-# Datasets & Weights
-data/
-datasets/
-*.pth
-*.pt
-*.onnx
-
-# Python Caches & Virtual Environments
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
-venv/
+*.pyd
+.Python
+
+# Virtual environments
 .venv/
+venv/
 env/
 .env
 
-# OS Files
+# macOS
 .DS_Store
-*.sh
-*.sh
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datasets & Model weights
+data/
+datasets/
+*.pt
+*.pth
+*.onnx
+
+# Generated output
+output/

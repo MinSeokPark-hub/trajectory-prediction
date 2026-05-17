@@ -1,113 +1,192 @@
-# 이미지 및 GPS 데이터 기반의 이동체 경로예측 및 충돌예측 연구
+# Pedestrian Trajectory Prediction API
 
-09조 · 조우연 · 박민석 · 허민경 · 지도교수: 이규철 교수님
+보행자 궤적 예측 및 충돌 위험도(TTC) 분석 API 서버입니다.  
+YOLOv8 보행자 탐지, 3D CNN + Attention 모델, LSTM 궤적 예측을 결합한 딥러닝 파이프라인입니다.
 
----
+## 프로젝트 구조
 
-## 프로젝트 개요
+```
+pedestrian_trajectory_api/
+├── app/                    # 초기 파이프라인 (3D CNN 기반)
+│   ├── main.py             # FastAPI 엔드포인트
+│   ├── model.py            # 3D CNN + Attention 모델
+│   ├── detector.py         # YOLOv8 보행자 탐지
+│   ├── inference.py        # 추론 파이프라인
+│   ├── preprocess.py       # 영상 프레임 전처리
+│   ├── dataset.py          # 데이터셋 로더
+│   └── train.py            # 모델 학습
+│
+├── src/                    # 고도화 파이프라인 (TTC 예측 기반)
+│   ├── main.py             # FastAPI 엔드포인트 (Safe-AI API)
+│   ├── inference_engine.py # SimpleTTC + LSTM 통합 추론
+│   ├── app_ui.py           # UI 인터페이스
+│   ├── predictors/
+│   │   ├── simple_ttc.py       # SimpleTTC 모델 (픽셀 기반 TTC 예측)
+│   │   ├── lstm_predictor.py   # LSTM 3D 궤적 예측 모델
+│   │   └── cnn3d_predictor.py  # 3D CNN 예측 모델
+│   ├── utils/
+│   │   ├── dataset.py          # 기본 데이터셋 처리
+│   │   ├── lstm_dataset.py     # LSTM 학습용 데이터셋
+│   │   ├── cnn3d_dataset.py    # 3D CNN 학습용 데이터셋
+│   │   ├── kitti_parser.py     # KITTI 데이터셋 파서
+│   │   ├── sgan_parser.py      # ETH/UCY 데이터셋 파서
+│   │   └── physics_engine.py   # 물리 기반 TTC 계산
+│   ├── train_lstm.py           # LSTM 모델 학습
+│   ├── train_cnn3d.py          # 3D CNN 모델 학습
+│   ├── train_simple_ttc.py     # SimpleTTC 모델 학습
+│   └── visualize.py            # 궤적 시각화
+│
+├── models/                 # 학습된 스케일러 파일
+├── Dockerfile
+└── requirements.txt
+```
 
-KITTI Tracking / ETH·UCY 데이터셋을 기반으로 보행자·차량의 미래 궤적을 예측하고,
-TTC(Time-to-Collision)를 산출하여 3단계 위험도(Safe / Warning / Danger)로 분류하는 시스템.
+## 모델 아키텍처
 
----
+### 시스템 전체 파이프라인
 
-## 시스템 구조
+```mermaid
+graph TD
+    A[입력 영상] --> B[YOLOv8\n보행자 탐지]
+    B --> C[픽셀 좌표 추출\nx, y, w, h, depth]
+    A --> D[프레임 전처리\nB×C×T×H×W 텐서]
 
-입력(KITTI 이미지 + 좌표) → Preprocessing(KittiParser / SGANParser / BaseParser) → 3개 모델 병렬 추론 → InferenceEngine 앙상블 → FastAPI / QueuePipeline 출력
+    D --> E[3D CNN\n시공간 특징 추출]
+    E --> F[Multi-head Attention\n중요 프레임 가중치]
+    F --> G[궤적 예측\nX, Y 좌표]
 
----
+    C --> H[SimpleTTC MLP\n3프레임 × 5피처]
+    C --> I[LSTM 궤적 예측\n5프레임 3D 좌표]
+    I --> J[벡터 기반 TTC 계산\n물리 엔진]
 
-## 모델 구조
+    H --> K[앙상블\nmin TTC 선택]
+    J --> K
 
-### 1. SimpleTTC (FC Network)
-- 입력: BBox 5값 (x, y, w, h, depth) × 3프레임 = 15차원
-- 구조: Linear(15→60) → ReLU × 8층 → Linear(60→1)
-- 출력: TTC (초)
-- 학습: KITTI, MSELoss, Adam
+    K --> L{위험 등급 판정}
+    L --> M[🔴 Danger\nTTC ≤ 1.5s]
+    L --> N[🟡 Warning\nTTC ≤ 3.0s]
+    L --> O[🟢 Safe\nTTC > 3.0s]
+```
 
-### 2. LSTM Trajectory Predictor
-- 입력: (B, 5, 3) — 과거 5프레임의 (x, y, depth)
-- 구조: LSTM(input=3, hidden=128, layers=2) → Linear(128→15)
-- 출력: 미래 5프레임 좌표 → ΔD/ΔV 방식으로 TTC 산출
-- 학습: KITTI, MSELoss, Adam
+### 1. 3D CNN + Attention 모델 구조 (app/)
 
-### 3. CNN3DPredictor (Sprint 1 신규)
-- 입력: (B, 3, T, 64, 64) — RGB 이미지 T프레임 시퀀스
-- 구조
-  - Conv3d(3→32) → BN → ReLU → MaxPool3d(1,2,2)
-  - Conv3d(32→64) → BN → ReLU → MaxPool3d(2,2,2)
-  - Conv3d(64→128) → BN → ReLU
-  - SpatioTemporalAttention(128) — 채널 어텐션
-  - AdaptiveAvgPool3d(1,1,1)
-  - Linear(128→64) → ReLU → Dropout(0.3) → Linear(64→1)
-- 출력: TTC (초)
-- 어텐션 특징 맵 shape: (B, 128, T', H', W')
+```mermaid
+graph TD
+    A["입력 비디오 텐서\n(B, 3, 16, 112, 112)"]
+    A --> B["3D Convolution\n3 → 16 채널, kernel 3×3×3"]
+    B --> C["ReLU"]
+    C --> D["MaxPool3d\n공간 해상도 ½ 축소"]
+    D --> E["AdaptiveAvgPool3d\n(B, 16, T, 1, 1)"]
+    E --> F["Reshape\n(B, T, 16)"]
+    F --> G["Multi-head Attention\nembed=16, heads=4"]
+    G --> H["마지막 프레임 특징 추출\n(B, 16)"]
+    H --> I["FC Linear\n16 → 2"]
+    I --> J["예측 좌표 (X, Y)"]
+```
 
-### SpatioTemporalAttention
-- GAP → Linear(C→C//4) → ReLU → Linear(C//4→C) → Sigmoid
-- 채널별 중요도 가중치를 학습하여 특징 맵에 적용
+### 2. TTC 앙상블 추론 구조 (src/)
 
-### InferenceEngine 앙상블
-- 세 모델 TTC 중 min값 선택 (가장 위험한 값 우선)
-- Danger: TTC ≤ 1.5s / Warning: TTC ≤ 3.0s / Safe: TTC > 3.0s
+```mermaid
+graph TD
+    A["입력\n픽셀 좌표 + 3D 좌표"]
 
----
+    A --> B["SimpleTTC MLP\n입력: 3프레임 × 5피처 = 15차원\n은닉: 60뉴런 × 8층\n출력: TTC 1값"]
+
+    A --> C["LSTM 궤적 예측\n입력: 5프레임 × 3D좌표\n은닉: 128\n출력: 미래 5프레임 궤적"]
+    C --> D["물리 엔진\n벡터 기반 TTC 계산\n안전 마진 1.8m 적용"]
+
+    B --> E["min(SimpleTTC, 벡터 TTC)\nclip 0.1s ~ 10.0s"]
+    D --> E
+
+    E --> F{TTC 기준 판정}
+    F -->|TTC ≤ 1.5s| G[Danger]
+    F -->|TTC ≤ 3.0s| H[Warning]
+    F -->|TTC > 3.0s| I[Safe]
+```
+
+### TTC 위험 등급
+
+| TTC 범위 | 위험 등급 |
+|----------|----------|
+| ≤ 1.5초 | **Danger** |
+| 1.5 ~ 3.0초 | **Warning** |
+| > 3.0초 | **Safe** |
 
 ## 데이터셋
 
-| 데이터셋 | 형식 | 용도 |
-|---------|------|------|
-| KITTI Tracking | 이미지 + 라벨 (.txt) | SimpleTTC / LSTM / 3D CNN 학습 |
-| ETH/UCY (SGAN) | 궤적 좌표 (.txt) | 보행자 궤적 검증 |
+ETH/UCY 보행자 궤적 공개 데이터셋을 사용합니다.
 
----
+| 데이터셋 | 설명 |
+|---------|------|
+| ETH | 취리히 공과대학 캠퍼스 |
+| Hotel | 호텔 앞 광장 |
+| UNIV | 대학 캠퍼스 |
+| ZARA1/2 | 자라 매장 앞 거리 |
 
-## 디렉토리 구조
+## API 엔드포인트
 
-- src/predictors/ — simple_ttc.py / lstm_predictor.py / cnn3d_predictor.py
-- src/utils/ — base_parser.py / kitti_parser.py / sgan_parser.py / data_helper.py / dataset.py / lstm_dataset.py / cnn3d_dataset.py
-- src/pipeline/ — queue_pipeline.py
-- src/inference_engine.py — 앙상블 추론 엔진
-- src/main.py — FastAPI 서버
+### app/ 서버 (3D CNN 기반)
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
----
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/` | 서버 상태 확인 |
+| GET | `/health` | 디바이스 정보 확인 |
+| POST | `/predict` | 영상 경로로 궤적 예측 |
+
+```json
+// POST /predict
+{ "video_path": "data/sample_video.mp4" }
+
+// 응답
+{ "status": "success", "predicted_x": 0.1234, "predicted_y": -0.5678 }
+```
+
+### src/ 서버 (TTC 기반)
+```bash
+uvicorn src.main:app --host 0.0.0.0 --port 8888
+```
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| POST | `/predict` | TTC 및 위험 등급 예측 |
+
+```json
+// POST /predict
+{
+  "history_pix": [[x, y, w, h, depth], ...],  // 최근 3프레임 픽셀 데이터
+  "history_3d":  [[x, y, depth], ...]          // 과거 5프레임 3D 좌표
+}
+
+// 응답
+{ "ttc": 2.45, "status": "Warning" }
+```
 
 ## 실행 방법
 
-환경 설정
+### 로컬 실행
 ```bash
-conda activate pedestrian
+pip install -r requirements.txt
+
+# app/ 서버
+uvicorn app.main:app --reload --port 8000
+
+# src/ 서버
+uvicorn src.main:app --reload --port 8888
 ```
 
-FastAPI 서버 실행
+### Docker 실행
 ```bash
-cd /workspace/minseok_park
-uvicorn src.main:app --host 0.0.0.0 --port 8888 --reload
+docker build -t trajectory-api .
+docker run -p 8000:8000 trajectory-api
 ```
 
-3D CNN 학습
-```bash
-python src/train_cnn3d.py
-```
+## 기술 스택
 
-동작 확인
-```bash
-python test_run.py      # 파서 테스트
-python test_cnn3d.py    # 3D CNN Forward 검증
-python test_queue.py    # Queue 파이프라인 검증
-```
-
----
-
-## Sprint 1 완료 항목
-
-| 항목 | 상태 |
-|------|------|
-| KITTI / ETH·UCY 데이터 로더 | 완료 |
-| BaseParser 통합 인터페이스 | 완료 |
-| 프레임 시퀀스 추출 및 텐서 변환 | 완료 |
-| 3D CNN 아키텍처 + 채널 어텐션 | 완료 |
-| Forward 차원 검증 | 완료 |
-| FastAPI 비동기 서버 | 완료 |
-| FIFO Queue 스트리밍 파이프라인 | 완료 |
-| GPU 환경 확인 (Tesla P100 × 8) | 완료 |
+- **언어**: Python 3.x
+- **딥러닝**: PyTorch
+- **객체 탐지**: YOLOv8 (Ultralytics)
+- **API 서버**: FastAPI, Uvicorn
+- **데이터 처리**: NumPy, Pandas, scikit-learn, OpenCV
