@@ -13,6 +13,7 @@ from pyquaternion import Quaternion
 sys.path.append(os.path.abspath("/workspace/minseok_park/"))
 from src.utils.sgan_parser import SGANParser
 from src.utils.nuscenes_parser import NuScenesParser
+from src.utils.kitti_parser import KittiParser
 from src.inference_engine import InferenceEngine
 
 st.set_page_config(page_title="경로예측 및 충돌예측 연구", layout="wide")
@@ -21,12 +22,20 @@ st.title("🛰️ 이미지 및 GPS데이터 기반의 이동체 경로예측 �
 KST = timezone(timedelta(hours=9))
 
 st.sidebar.header("🛠️ System Settings")
-dataset_mode      = st.sidebar.radio("📂 데이터셋 선택", ["nuScenes", "ETH/UCY (SGAN)"])
+dataset_mode      = st.sidebar.radio("📂 데이터셋 선택", ["nuScenes", "ETH/UCY (SGAN)", "KITTI"])
 ttc_threshold     = st.sidebar.slider("Danger TTC Threshold (s)",  0.5, 3.0, 1.5, 0.1)
 warning_threshold = st.sidebar.slider("Warning TTC Threshold (s)", 3.0, 5.0, 4.0, 0.5)
 frame_skip        = st.sidebar.slider("Frame Skip (빠를수록 ↑)", 1, 5, 1, 1)
 sleep_time        = st.sidebar.slider("Frame Delay (s)", 0.0, 1.0, 0.3, 0.05)
 st.sidebar.markdown("---")
+if dataset_mode == "KITTI":
+    KITTI_LABEL_DIR = "/workspace/minseok_park/data/kitti/labels"
+    KITTI_IMAGE_DIR = "/workspace/minseok_park/data/kitti/images"
+    kitti_sequences = sorted([f.replace('.txt','') for f in os.listdir(KITTI_LABEL_DIR) if f.endswith('.txt')])
+    kitti_seq = st.sidebar.selectbox("📁 KITTI 시퀀스", kitti_sequences)
+else:
+    kitti_seq = None
+
 col_btn1, col_btn2 = st.sidebar.columns(2)
 run_simulation  = col_btn1.button("▶️ 시작", use_container_width=True)
 stop_simulation = col_btn2.button("⏹️ 정지", use_container_width=True)
@@ -40,6 +49,14 @@ def init_nuscenes():
     from nuscenes.nuscenes import NuScenes
     nusc = NuScenes(version='v1.0-mini', dataroot=DATAROOT, verbose=False)
     return engine, df, nusc, DATAROOT
+
+@st.cache_resource
+def init_kitti(seq):
+    engine     = InferenceEngine()
+    parser     = KittiParser(fps=10.0)
+    label_path = f"/workspace/minseok_park/data/kitti/labels/{seq}.txt"
+    df         = parser.load(label_path)
+    return engine, df, seq
 
 @st.cache_resource
 def init_sgan():
@@ -148,6 +165,8 @@ def draw_boxes_on_image(img_path, boxes):
 
 if dataset_mode == "nuScenes":
     engine, full_df, nusc, DATAROOT = init_nuscenes()
+elif dataset_mode == "KITTI":
+    engine, full_df, kitti_seq = init_kitti(kitti_seq)
 else:
     engine, full_df = init_sgan()
 
@@ -158,6 +177,14 @@ if dataset_mode == "nuScenes":
         map_placeholder = st.empty()
     with col_cam:
         st.subheader("📷 Camera View (CAM_FRONT)")
+        cam_placeholder = st.empty()
+elif dataset_mode == "KITTI":
+    col_radar, col_cam = st.columns(2)
+    with col_radar:
+        st.subheader("📡 Bird's Eye View (KITTI)")
+        map_placeholder = st.empty()
+    with col_cam:
+        st.subheader("📷 Camera View (KITTI)")
         cam_placeholder = st.empty()
 else:
     col_radar, col_cam = st.columns(2)
@@ -310,6 +337,96 @@ if run_simulation:
 
             if stop_simulation:
                 break
+
+    elif dataset_mode == "KITTI":
+        frames = sorted(full_df['frame'].unique())[::frame_skip]
+        for f_idx in frames:
+            if stop_simulation:
+                st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
+                break
+
+            current_df = full_df[full_df['frame'] == f_idx].copy()
+            if current_df.empty:
+                continue
+
+            current_df = current_df.nsmallest(10, 'depth')
+            fig_map    = go.Figure()
+            risk_objs  = []
+            boxes_to_draw = []
+
+            img_path = f"/workspace/minseok_park/data/kitti/images/{kitti_seq}/{int(f_idx):06d}.png"
+
+            for _, obj in current_df.iterrows():
+                tid     = int(obj['track_id'])
+                history = full_df[
+                    (full_df['track_id'] == tid) &
+                    (full_df['frame']    <= f_idx)
+                ].tail(5)
+                if len(history) < 2:
+                    continue
+
+                depth = float(obj['depth'])
+                vel   = float(obj['velocity']) if pd.notna(obj.get('velocity')) else 0.0
+                ttc   = depth / vel if vel > 0.1 else 10.0
+                ttc   = float(min(max(ttc, 0.1), 10.0))
+
+                color_rgb, color_str, status = get_color(ttc, ttc_threshold, warning_threshold)
+                if status == "Danger":
+                    risk_objs.append({"ID": tid, "TTC": f"{ttc:.2f}s", "Status": "🚨 DANGER"})
+
+                fig_map.add_trace(go.Scatter(
+                    x=[float(obj['pos_x'])], y=[float(obj['pos_z'])],
+                    mode='markers+text',
+                    marker=dict(size=15, color=color_str, line=dict(width=2, color='black')),
+                    text=[f"{obj['type']}<br>{ttc:.1f}s"], textposition="top center", name=status
+                ))
+                fig_map.add_trace(go.Scatter(
+                    x=history['pos_x'].values, y=history['pos_z'].values,
+                    mode='lines', line=dict(color='gray', width=1),
+                    showlegend=False, opacity=0.4
+                ))
+
+                x1 = int(obj['x_pix'] - obj['w_pix'] / 2)
+                y1 = int(obj['y_pix'] - obj['h_pix'] / 2)
+                x2 = int(obj['x_pix'] + obj['w_pix'] / 2)
+                y2 = int(obj['y_pix'] + obj['h_pix'] / 2)
+                label = f"{obj['type']} {ttc:.1f}s"
+                boxes_to_draw.append((x1, y1, x2, y2, label, color_rgb))
+
+            fig_map.add_trace(go.Scatter(
+                x=[0], y=[0],
+                mode='markers+text',
+                marker=dict(size=18, color='blue', symbol='triangle-up'),
+                text=["🚗 EGO"], textposition="top center", name="자차"
+            ))
+            fig_map.update_layout(
+                xaxis=dict(range=[-15, 15], title="X (m)"),
+                yaxis=dict(range=[-2,  50], title="Z/Depth (m)"),
+                height=500, margin=dict(l=0, r=0, b=0, t=0),
+                showlegend=False, plot_bgcolor="#e8f4e8"
+            )
+            map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"kitti_map_{f_idx}")
+
+            if os.path.exists(img_path):
+                rendered = draw_boxes_on_image(img_path, boxes_to_draw)
+                cam_placeholder.image(rendered, use_container_width=True)
+            else:
+                cam_placeholder.info(f"이미지 없음: {img_path}")
+
+            if risk_objs:
+                alert_placeholder.error(f"⚠️ {len(risk_objs)}개의 이동체가 충돌 위험 궤적 내에 있습니다.")
+            else:
+                alert_placeholder.success("✅ 충돌 위험 없음.")
+
+            if risk_objs:
+                for p in risk_objs:
+                    current_kst = datetime.now(KST).strftime("%H:%M:%S")
+                    detection_logs.insert(0, {"Time": current_kst, **p})
+                log_placeholder.dataframe(
+                    pd.DataFrame(detection_logs).head(10), use_container_width=True
+                )
+
+            time.sleep(sleep_time)
 
     else:
         frames = sorted(full_df['frame'].unique())[::frame_skip]
