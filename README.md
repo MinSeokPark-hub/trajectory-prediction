@@ -43,22 +43,68 @@ pedestrian_trajectory_api/
 
 ## 모델 아키텍처
 
-### 1. 3D CNN + Attention (app/)
-영상 클립에서 시공간 특징을 추출하여 다음 위치를 예측합니다.
+### 시스템 전체 파이프라인
 
-- **3D CNN**: 연속 프레임에서 시공간 특징 추출
-- **Multi-head Attention**: 중요 프레임에 가중치 부여
-- **출력**: 다음 프레임의 (X, Y) 좌표
+```mermaid
+graph TD
+    A[입력 영상] --> B[YOLOv8\n보행자 탐지]
+    B --> C[픽셀 좌표 추출\nx, y, w, h, depth]
+    A --> D[프레임 전처리\nB×C×T×H×W 텐서]
 
-### 2. TTC(Time-to-Collision) 예측 (src/)
-두 모델의 예측값을 통합하여 충돌까지 남은 시간을 계산합니다.
+    D --> E[3D CNN\n시공간 특징 추출]
+    E --> F[Multi-head Attention\n중요 프레임 가중치]
+    F --> G[궤적 예측\nX, Y 좌표]
 
-| 모델 | 입력 | 출력 |
-|------|------|------|
-| **SimpleTTC** | 최근 3프레임 픽셀 좌표 (5 피처) | TTC (초) |
-| **LSTM** | 과거 5프레임 3D 좌표 (x, y, depth) | 미래 5프레임 궤적 |
+    C --> H[SimpleTTC MLP\n3프레임 × 5피처]
+    C --> I[LSTM 궤적 예측\n5프레임 3D 좌표]
+    I --> J[벡터 기반 TTC 계산\n물리 엔진]
 
-최종 TTC = `min(SimpleTTC, 벡터 기반 TTC)`
+    H --> K[앙상블\nmin TTC 선택]
+    J --> K
+
+    K --> L{위험 등급 판정}
+    L --> M[🔴 Danger\nTTC ≤ 1.5s]
+    L --> N[🟡 Warning\nTTC ≤ 3.0s]
+    L --> O[🟢 Safe\nTTC > 3.0s]
+```
+
+### 1. 3D CNN + Attention 모델 구조 (app/)
+
+```mermaid
+graph TD
+    A["입력 비디오 텐서\n(B, 3, 16, 112, 112)"]
+    A --> B["3D Convolution\n3 → 16 채널, kernel 3×3×3"]
+    B --> C["ReLU"]
+    C --> D["MaxPool3d\n공간 해상도 ½ 축소"]
+    D --> E["AdaptiveAvgPool3d\n(B, 16, T, 1, 1)"]
+    E --> F["Reshape\n(B, T, 16)"]
+    F --> G["Multi-head Attention\nembed=16, heads=4"]
+    G --> H["마지막 프레임 특징 추출\n(B, 16)"]
+    H --> I["FC Linear\n16 → 2"]
+    I --> J["예측 좌표 (X, Y)"]
+```
+
+### 2. TTC 앙상블 추론 구조 (src/)
+
+```mermaid
+graph TD
+    A["입력\n픽셀 좌표 + 3D 좌표"]
+
+    A --> B["SimpleTTC MLP\n입력: 3프레임 × 5피처 = 15차원\n은닉: 60뉴런 × 8층\n출력: TTC 1값"]
+
+    A --> C["LSTM 궤적 예측\n입력: 5프레임 × 3D좌표\n은닉: 128\n출력: 미래 5프레임 궤적"]
+    C --> D["물리 엔진\n벡터 기반 TTC 계산\n안전 마진 1.8m 적용"]
+
+    B --> E["min(SimpleTTC, 벡터 TTC)\nclip 0.1s ~ 10.0s"]
+    D --> E
+
+    E --> F{TTC 기준 판정}
+    F -->|TTC ≤ 1.5s| G[Danger]
+    F -->|TTC ≤ 3.0s| H[Warning]
+    F -->|TTC > 3.0s| I[Safe]
+```
+
+### TTC 위험 등급
 
 | TTC 범위 | 위험 등급 |
 |----------|----------|
