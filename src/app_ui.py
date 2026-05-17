@@ -246,7 +246,7 @@ if run_simulation:
                 fig_map.add_trace(go.Scatter(
                     x=[0], y=[0],
                     mode='markers+text',
-                    marker=dict(size=18, color='blue', symbol='triangle-up'),
+                    marker=dict(size=18, color='blue', symbol='circle'),
                     text=["🚗 EGO"], textposition="top center", name="자차"
                 ))
 
@@ -396,7 +396,7 @@ if run_simulation:
             fig_map.add_trace(go.Scatter(
                 x=[0], y=[0],
                 mode='markers+text',
-                marker=dict(size=18, color='blue', symbol='triangle-up'),
+                marker=dict(size=18, color='blue', symbol='circle'),
                 text=["🚗 EGO"], textposition="top center", name="자차"
             ))
             fig_map.update_layout(
