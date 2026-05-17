@@ -1,0 +1,16 @@
+services:
+  trajectory-api:
+    build: .
+    container_name: trajectory-api
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
