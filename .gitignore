@@ -9,6 +9,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.env
 
 # macOS
 .DS_Store
@@ -19,3 +20,13 @@ env/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Datasets & Model weights
+data/
+datasets/
+*.pt
+*.pth
+*.onnx
+
+# Generated output
+output/
