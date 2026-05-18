@@ -6,7 +6,6 @@ import sys
 import time
 import glob
 import numpy as np
-from datetime import datetime, timezone, timedelta
 from PIL import Image, ImageDraw
 from pyquaternion import Quaternion
 
@@ -17,14 +16,27 @@ from src.utils.kitti_parser import KittiParser
 from src.inference_engine import InferenceEngine
 
 st.set_page_config(page_title="경로예측 및 충돌예측 연구", layout="wide")
-st.title("🛰️ 이미지 및 GPS데이터 기반의 이동체 경로예측 및 충돌예측 연구")
+
+st.markdown("""
+<style>
+section[data-testid="stSidebar"] > div:first-child { background-color: #1a2035; }
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] div,
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 { color: #ffffff !important; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("## 🛰️ 이미지 및 GPS 데이터 기반 이동체 경로 예측 및 충돌 예측 연구")
+st.caption("Trajectory Prediction and Collision Prediction based on Image & GPS Data")
 
 if 'resume_frame' not in st.session_state:
     st.session_state.resume_frame = None
 if 'resume_scene' not in st.session_state:
     st.session_state.resume_scene = None
-
-KST = timezone(timedelta(hours=9))
 
 st.sidebar.header("🛠️ System Settings")
 dataset_mode      = st.sidebar.radio("📂 데이터셋 선택", ["nuScenes", "ETH/UCY (SGAN)", "KITTI"])
@@ -183,43 +195,62 @@ elif dataset_mode == "KITTI":
 else:
     engine, full_df = init_sgan()
 
+def _live_header(title):
+    st.markdown(
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        f'<span style="font-size:17px;font-weight:600">{title}</span>'
+        f'<span style="background:#2ecc71;color:white;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:bold">LIVE</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
 if dataset_mode == "nuScenes":
     col_map, col_cam = st.columns(2)
     with col_map:
-        st.subheader("🗺️ GPS Map View (자차 중심)")
+        _live_header("🗺️ GPS Map View (자차 중심)")
         map_placeholder = st.empty()
     with col_cam:
-        st.subheader("📷 Camera View (CAM_FRONT)")
+        _live_header("📷 Camera View (CAM_FRONT)")
         cam_placeholder = st.empty()
+        cam_meta_placeholder = st.empty()
 elif dataset_mode == "KITTI":
     col_radar, col_cam = st.columns(2)
     with col_radar:
-        st.subheader("📡 Bird's Eye View (KITTI)")
+        _live_header("📡 Bird's Eye View (KITTI)")
         map_placeholder = st.empty()
     with col_cam:
-        st.subheader("📷 Camera View (KITTI)")
+        _live_header("📷 Camera View (KITTI)")
         cam_placeholder = st.empty()
+        cam_meta_placeholder = st.empty()
 else:
     col_radar, col_cam = st.columns(2)
     with col_radar:
-        st.subheader("📡 Bird's Eye View (Radar)")
+        _live_header("📡 Bird's Eye View (Radar)")
         map_placeholder = st.empty()
     with col_cam:
-        st.subheader("📷 Camera View")
+        _live_header("📷 Camera View")
         cam_placeholder = st.empty()
+        cam_meta_placeholder = st.empty()
 
 st.markdown("---")
-col_report, col_log = st.columns([1, 2])
-with col_report:
-    st.subheader("⚠️ Risk Analysis Report")
-    alert_placeholder = st.empty()
-with col_log:
-    st.subheader("📝 Detection Log")
-    log_placeholder = st.empty()
+_s1, _s2, _s3, _s4, _s5 = st.columns(5)
+with _s1:
+    ttc_ph = st.empty()
+with _s2:
+    danger_ph = st.empty()
+with _s3:
+    count_ph = st.empty()
+with _s4:
+    rttc_ph = st.empty()
+with _s5:
+    dataset_ph = st.empty()
+ttc_ph.metric("🛡️ TTC (최소)", "—")
+danger_ph.metric("⚠️ 위험 수준", "—")
+count_ph.metric("🚗 충돌 객체", "—")
+rttc_ph.metric("⏱️ 예상 재재 TTC", "—")
+dataset_ph.metric("🗄️ 데이터셋", dataset_mode)
 
 if run_simulation or resume_simulation:
-    detection_logs = []
-
     if dataset_mode == "nuScenes":
         # scene+frame → sample_token 매핑
         scene_frame_tokens = {}
@@ -258,6 +289,7 @@ if run_simulation or resume_simulation:
                 current_df   = current_df.nsmallest(10, 'depth')
                 fig_map      = go.Figure()
                 risk_objs    = []
+                min_ttc_frame = 10.0
                 ego_x        = current_df.iloc[0]['ego_x']
                 ego_y        = current_df.iloc[0]['ego_y']
                 sample_token = scene_frame_tokens.get((scene_name, int(f_idx)), None)
@@ -288,6 +320,7 @@ if run_simulation or resume_simulation:
                     vel   = float(obj['velocity']) if pd.notna(obj.get('velocity')) else 0.0
                     ttc   = depth / vel if vel > 0.1 else 10.0
                     ttc   = float(min(max(ttc, 0.1), 10.0))
+                    min_ttc_frame = min(min_ttc_frame, ttc)
 
                     color_rgb, color_str, status = get_color(ttc, ttc_threshold, warning_threshold)
                     if status == "Danger":
@@ -346,19 +379,22 @@ if run_simulation or resume_simulation:
 
                 map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{scene_name}_{f_idx}")
 
-                if risk_objs:
-                    alert_placeholder.error(f"⚠️ {len(risk_objs)}개의 이동체가 충돌 위험 궤적 내에 있습니다.")
+                if min_ttc_frame <= ttc_threshold:
+                    frame_status = "🚨 DANGER"
+                elif min_ttc_frame <= warning_threshold:
+                    frame_status = "⚠️ WARNING"
                 else:
-                    alert_placeholder.success("✅ 충돌 위험 없음.")
-
-                if risk_objs:
-                    for p in risk_objs:
-                        current_kst = datetime.now(KST).strftime("%H:%M:%S")
-                        detection_logs.insert(0, {"Time": current_kst, **p})
-                    log_placeholder.dataframe(
-                        pd.DataFrame(detection_logs).head(10),
-                        use_container_width=True
-                    )
+                    frame_status = "✅ SAFE"
+                ttc_str = f"{min_ttc_frame:.2f} s" if min_ttc_frame < 10.0 else "—"
+                ttc_ph.metric("🛡️ TTC (최소)", ttc_str)
+                danger_ph.metric("⚠️ 위험 수준", frame_status)
+                count_ph.metric("🚗 충돌 객체", len(risk_objs))
+                rttc_ph.metric("⏱️ 예상 재재 TTC", ttc_str)
+                cam_meta_placeholder.markdown(
+                    '<div style="color:#888;font-size:12px;margin-top:4px">'
+                    '📷 CAM_FRONT &nbsp;|&nbsp; 🌙 Night &nbsp;|&nbsp; 📐 1600 × 900 &nbsp;|&nbsp; 🎞 2 FPS'
+                    '</div>', unsafe_allow_html=True
+                )
 
                 if stop_simulation:
                     st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
@@ -386,6 +422,7 @@ if run_simulation or resume_simulation:
             current_df = current_df.nsmallest(10, 'depth')
             fig_map    = go.Figure()
             risk_objs  = []
+            min_ttc_frame = 10.0
             boxes_to_draw = []
 
             img_path = f"/workspace/minseok_park/data/kitti/images/{kitti_seq}/{int(f_idx):06d}.png"
@@ -403,6 +440,7 @@ if run_simulation or resume_simulation:
                 vel   = float(obj['velocity']) if pd.notna(obj.get('velocity')) else 0.0
                 ttc   = depth / vel if vel > 0.1 else 10.0
                 ttc   = float(min(max(ttc, 0.1), 10.0))
+                min_ttc_frame = min(min_ttc_frame, ttc)
 
                 color_rgb, color_str, status = get_color(ttc, ttc_threshold, warning_threshold)
                 if status == "Danger":
@@ -447,18 +485,22 @@ if run_simulation or resume_simulation:
             else:
                 cam_placeholder.info(f"이미지 없음: {img_path}")
 
-            if risk_objs:
-                alert_placeholder.error(f"⚠️ {len(risk_objs)}개의 이동체가 충돌 위험 궤적 내에 있습니다.")
+            if min_ttc_frame <= ttc_threshold:
+                frame_status = "🚨 DANGER"
+            elif min_ttc_frame <= warning_threshold:
+                frame_status = "⚠️ WARNING"
             else:
-                alert_placeholder.success("✅ 충돌 위험 없음.")
-
-            if risk_objs:
-                for p in risk_objs:
-                    current_kst = datetime.now(KST).strftime("%H:%M:%S")
-                    detection_logs.insert(0, {"Time": current_kst, **p})
-                log_placeholder.dataframe(
-                    pd.DataFrame(detection_logs).head(10), use_container_width=True
-                )
+                frame_status = "✅ SAFE"
+            ttc_str = f"{min_ttc_frame:.2f} s" if min_ttc_frame < 10.0 else "—"
+            ttc_ph.metric("🛡️ TTC (최소)", ttc_str)
+            danger_ph.metric("⚠️ 위험 수준", frame_status)
+            count_ph.metric("🚗 충돌 객체", len(risk_objs))
+            rttc_ph.metric("⏱️ 예상 재재 TTC", ttc_str)
+            cam_meta_placeholder.markdown(
+                f'<div style="color:#888;font-size:12px;margin-top:4px">'
+                f'📷 KITTI &nbsp;|&nbsp; Seq: {kitti_seq} &nbsp;|&nbsp; 🎞 10 FPS'
+                f'</div>', unsafe_allow_html=True
+            )
 
             if stop_simulation:
                 st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
@@ -484,6 +526,7 @@ if run_simulation or resume_simulation:
             fig_map    = go.Figure()
             fig_cam    = go.Figure()
             risk_objs  = []
+            min_ttc_frame = 10.0
 
             frame_img_path = f"/workspace/minseok_park/data/sgan/datasets/eth/frames/{int(f_idx):04d}.png"
             if os.path.exists(frame_img_path):
@@ -508,6 +551,7 @@ if run_simulation or resume_simulation:
                 ttc, _    = engine.predict(pix_input, real_3d)
 
                 _, color_str, status = get_color(ttc, ttc_threshold, warning_threshold)
+                min_ttc_frame = min(min_ttc_frame, ttc)
                 if status == "Danger":
                     risk_objs.append({"ID": tid, "TTC": f"{ttc:.2f}s", "Status": "🚨 DANGER"})
 
@@ -554,19 +598,22 @@ if run_simulation or resume_simulation:
             map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{f_idx}")
             cam_placeholder.plotly_chart(fig_cam, use_container_width=True, key=f"cam_{f_idx}")
 
-            if risk_objs:
-                alert_placeholder.error(f"⚠️ {len(risk_objs)}개의 이동체가 충돌 위험 궤적 내에 있습니다.")
+            if min_ttc_frame <= ttc_threshold:
+                frame_status = "🚨 DANGER"
+            elif min_ttc_frame <= warning_threshold:
+                frame_status = "⚠️ WARNING"
             else:
-                alert_placeholder.success("✅ 충돌 위험 없음.")
-
-            if risk_objs:
-                for p in risk_objs:
-                    current_kst = datetime.now(KST).strftime("%H:%M:%S")
-                    detection_logs.insert(0, {"Time": current_kst, **p})
-                log_placeholder.dataframe(
-                    pd.DataFrame(detection_logs).head(10),
-                    use_container_width=True
-                )
+                frame_status = "✅ SAFE"
+            ttc_str = f"{min_ttc_frame:.2f} s" if min_ttc_frame < 10.0 else "—"
+            ttc_ph.metric("🛡️ TTC (최소)", ttc_str)
+            danger_ph.metric("⚠️ 위험 수준", frame_status)
+            count_ph.metric("🚗 충돌 객체", len(risk_objs))
+            rttc_ph.metric("⏱️ 예상 재재 TTC", ttc_str)
+            cam_meta_placeholder.markdown(
+                '<div style="color:#888;font-size:12px;margin-top:4px">'
+                '📷 ETH/UCY &nbsp;|&nbsp; 🎞 2.5 FPS'
+                '</div>', unsafe_allow_html=True
+            )
 
             if stop_simulation:
                 st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
