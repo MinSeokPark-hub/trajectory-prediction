@@ -248,9 +248,10 @@ if run_simulation or resume_simulation:
                 if _resume_frame is not None and scene_name == _resume_scene and f_idx < _resume_frame:
                     continue
 
+                st.session_state.resume_frame = f_idx
+                st.session_state.resume_scene = scene_name
+
                 if stop_simulation:
-                    st.session_state.resume_frame = f_idx
-                    st.session_state.resume_scene = scene_name
                     st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
                     break
 
@@ -375,9 +376,10 @@ if run_simulation or resume_simulation:
             if _resume_frame is not None and f_idx < _resume_frame:
                 continue
 
+            st.session_state.resume_frame = f_idx
+            st.session_state.resume_scene = None
+
             if stop_simulation:
-                st.session_state.resume_frame = f_idx
-                st.session_state.resume_scene = None
                 st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
                 break
 
@@ -471,9 +473,10 @@ if run_simulation or resume_simulation:
             if _resume_frame is not None and f_idx < _resume_frame:
                 continue
 
+            st.session_state.resume_frame = f_idx
+            st.session_state.resume_scene = None
+
             if stop_simulation:
-                st.session_state.resume_frame = f_idx
-                st.session_state.resume_scene = None
                 st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
                 break
 
