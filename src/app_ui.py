@@ -19,6 +19,11 @@ from src.inference_engine import InferenceEngine
 st.set_page_config(page_title="경로예측 및 충돌예측 연구", layout="wide")
 st.title("🛰️ 이미지 및 GPS데이터 기반의 이동체 경로예측 및 충돌예측 연구")
 
+if 'resume_frame' not in st.session_state:
+    st.session_state.resume_frame = None
+if 'resume_scene' not in st.session_state:
+    st.session_state.resume_scene = None
+
 KST = timezone(timedelta(hours=9))
 
 st.sidebar.header("🛠️ System Settings")
@@ -37,8 +42,14 @@ else:
     kitti_seq = None
 
 col_btn1, col_btn2 = st.sidebar.columns(2)
-run_simulation  = col_btn1.button("▶️ 시작", use_container_width=True)
-stop_simulation = col_btn2.button("⏹️ 정지", use_container_width=True)
+run_simulation    = col_btn1.button("▶️ 시작", use_container_width=True)
+stop_simulation   = col_btn2.button("⏹️ 정지", use_container_width=True)
+resume_simulation = st.sidebar.button("⏩ 재개", use_container_width=True,
+                                      disabled=st.session_state.resume_frame is None)
+
+if run_simulation:
+    st.session_state.resume_frame = None
+    st.session_state.resume_scene = None
 
 @st.cache_resource
 def init_nuscenes():
@@ -206,7 +217,7 @@ with col_log:
     st.subheader("📝 Detection Log")
     log_placeholder = st.empty()
 
-if run_simulation:
+if run_simulation or resume_simulation:
     detection_logs = []
 
     if dataset_mode == "nuScenes":
@@ -221,14 +232,25 @@ if run_simulation:
                 token  = sample['next']
                 f += 1
 
+        _resume_scene = st.session_state.resume_scene if resume_simulation else None
+        _resume_frame = st.session_state.resume_frame if resume_simulation else None
+
         # scene 순서대로, 각 scene의 프레임 순서대로 순회
         scenes = full_df['scene'].unique()
         for scene_name in scenes:
+            if _resume_scene and scene_name < _resume_scene:
+                continue
+
             scene_df = full_df[full_df['scene'] == scene_name]
             frames   = sorted(scene_df['frame'].unique())[::frame_skip]
 
             for f_idx in frames:
+                if _resume_frame is not None and scene_name == _resume_scene and f_idx < _resume_frame:
+                    continue
+
                 if stop_simulation:
+                    st.session_state.resume_frame = f_idx
+                    st.session_state.resume_scene = scene_name
                     st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
                     break
 
@@ -347,9 +369,15 @@ if run_simulation:
                 break
 
     elif dataset_mode == "KITTI":
+        _resume_frame = st.session_state.resume_frame if resume_simulation else None
         frames = sorted(full_df['frame'].unique())[::frame_skip]
         for f_idx in frames:
+            if _resume_frame is not None and f_idx < _resume_frame:
+                continue
+
             if stop_simulation:
+                st.session_state.resume_frame = f_idx
+                st.session_state.resume_scene = None
                 st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
                 break
 
@@ -437,9 +465,15 @@ if run_simulation:
             time.sleep(sleep_time)
 
     else:
+        _resume_frame = st.session_state.resume_frame if resume_simulation else None
         frames = sorted(full_df['frame'].unique())[::frame_skip]
         for f_idx in frames:
+            if _resume_frame is not None and f_idx < _resume_frame:
+                continue
+
             if stop_simulation:
+                st.session_state.resume_frame = f_idx
+                st.session_state.resume_scene = None
                 st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
                 break
 
