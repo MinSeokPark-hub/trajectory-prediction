@@ -6,6 +6,7 @@ import sys
 import time
 import glob
 import numpy as np
+from datetime import datetime, timezone, timedelta
 from PIL import Image, ImageDraw
 from pyquaternion import Quaternion
 
@@ -277,6 +278,17 @@ def _render_status(danger_list, warning_list, safe_cnt):
 
 _render_status([], [], 0)
 
+KST = timezone(timedelta(hours=9))
+
+st.markdown("---")
+st.subheader("📋 위험 감지 로그")
+log_placeholder = st.empty()
+
+if 'detection_logs' not in st.session_state:
+    st.session_state.detection_logs = []
+if run_simulation:
+    st.session_state.detection_logs = []
+
 if run_simulation or resume_simulation:
     if dataset_mode == "nuScenes":
         # scene+frame → sample_token 매핑
@@ -411,6 +423,13 @@ if run_simulation or resume_simulation:
                 map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{scene_name}_{f_idx}")
 
                 _render_status(danger_objs, warning_objs, safe_count)
+                now_kst = datetime.now(KST).strftime("%H:%M:%S")
+                for ttc_val in danger_objs:
+                    st.session_state.detection_logs.insert(0, {"시간(KST)": now_kst, "수준": "🚨 DANGER", "TTC": f"{ttc_val:.2f}s", "데이터셋": "nuScenes"})
+                for ttc_val in warning_objs:
+                    st.session_state.detection_logs.insert(0, {"시간(KST)": now_kst, "수준": "⚠️ WARNING", "TTC": f"{ttc_val:.2f}s", "데이터셋": "nuScenes"})
+                if st.session_state.detection_logs:
+                    log_placeholder.dataframe(pd.DataFrame(st.session_state.detection_logs).head(20), use_container_width=True)
                 cam_meta_placeholder.markdown(
                     '<div style="color:#888;font-size:12px;margin-top:4px">'
                     '📷 CAM_FRONT &nbsp;|&nbsp; 🌙 Night &nbsp;|&nbsp; 📐 1600 × 900 &nbsp;|&nbsp; 🎞 2 FPS'
@@ -511,6 +530,13 @@ if run_simulation or resume_simulation:
                 cam_placeholder.info(f"이미지 없음: {img_path}")
 
             _render_status(danger_objs, warning_objs, safe_count)
+            now_kst = datetime.now(KST).strftime("%H:%M:%S")
+            for ttc_val in danger_objs:
+                st.session_state.detection_logs.insert(0, {"시간(KST)": now_kst, "수준": "🚨 DANGER", "TTC": f"{ttc_val:.2f}s", "데이터셋": "KITTI"})
+            for ttc_val in warning_objs:
+                st.session_state.detection_logs.insert(0, {"시간(KST)": now_kst, "수준": "⚠️ WARNING", "TTC": f"{ttc_val:.2f}s", "데이터셋": "KITTI"})
+            if st.session_state.detection_logs:
+                log_placeholder.dataframe(pd.DataFrame(st.session_state.detection_logs).head(20), use_container_width=True)
             cam_meta_placeholder.markdown(
                 f'<div style="color:#888;font-size:12px;margin-top:4px">'
                 f'📷 KITTI &nbsp;|&nbsp; Seq: {kitti_seq} &nbsp;|&nbsp; 🎞 10 FPS'
@@ -618,6 +644,13 @@ if run_simulation or resume_simulation:
             cam_placeholder.plotly_chart(fig_cam, use_container_width=True, key=f"cam_{f_idx}")
 
             _render_status(danger_objs, warning_objs, safe_count)
+            now_kst = datetime.now(KST).strftime("%H:%M:%S")
+            for ttc_val in danger_objs:
+                st.session_state.detection_logs.insert(0, {"시간(KST)": now_kst, "수준": "🚨 DANGER", "TTC": f"{ttc_val:.2f}s", "데이터셋": "ETH/UCY"})
+            for ttc_val in warning_objs:
+                st.session_state.detection_logs.insert(0, {"시간(KST)": now_kst, "수준": "⚠️ WARNING", "TTC": f"{ttc_val:.2f}s", "데이터셋": "ETH/UCY"})
+            if st.session_state.detection_logs:
+                log_placeholder.dataframe(pd.DataFrame(st.session_state.detection_logs).head(20), use_container_width=True)
             cam_meta_placeholder.markdown(
                 '<div style="color:#888;font-size:12px;margin-top:4px">'
                 '📷 ETH/UCY &nbsp;|&nbsp; 🎞 2.5 FPS'
