@@ -251,10 +251,6 @@ if run_simulation or resume_simulation:
                 st.session_state.resume_frame = f_idx
                 st.session_state.resume_scene = scene_name
 
-                if stop_simulation:
-                    st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
-                    break
-
                 current_df = scene_df[scene_df['frame'] == f_idx].copy()
                 if current_df.empty:
                     continue
@@ -364,6 +360,10 @@ if run_simulation or resume_simulation:
                         use_container_width=True
                     )
 
+                if stop_simulation:
+                    st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
+                    break
+
                 time.sleep(sleep_time)
 
             if stop_simulation:
@@ -378,10 +378,6 @@ if run_simulation or resume_simulation:
 
             st.session_state.resume_frame = f_idx
             st.session_state.resume_scene = None
-
-            if stop_simulation:
-                st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
-                break
 
             current_df = full_df[full_df['frame'] == f_idx].copy()
             if current_df.empty:
@@ -464,6 +460,10 @@ if run_simulation or resume_simulation:
                     pd.DataFrame(detection_logs).head(10), use_container_width=True
                 )
 
+            if stop_simulation:
+                st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
+                break
+
             time.sleep(sleep_time)
 
     else:
@@ -475,10 +475,6 @@ if run_simulation or resume_simulation:
 
             st.session_state.resume_frame = f_idx
             st.session_state.resume_scene = None
-
-            if stop_simulation:
-                st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
-                break
 
             current_df = full_df[full_df['frame'] == f_idx].copy()
             if current_df.empty:
@@ -571,5 +567,9 @@ if run_simulation or resume_simulation:
                     pd.DataFrame(detection_logs).head(10),
                     use_container_width=True
                 )
+
+            if stop_simulation:
+                st.warning("⏹️ 시뮬레이션이 정지되었습니다.")
+                break
 
             time.sleep(sleep_time)
