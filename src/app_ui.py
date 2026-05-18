@@ -22,11 +22,21 @@ st.markdown("""
 section[data-testid="stSidebar"] > div:first-child { background-color: #1a2035; }
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] div,
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] .stRadio label,
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stSlider label,
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3 { color: #ffffff !important; }
+section[data-testid="stSidebar"] .stButton button {
+    background-color: #2563eb;
+    color: #ffffff !important;
+    border: none;
+}
+section[data-testid="stSidebar"] .stButton button:hover {
+    background-color: #1d4ed8;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -246,7 +256,7 @@ with _s5:
     dataset_ph = st.empty()
 ttc_ph.metric("🛡️ TTC (최소)", "—")
 danger_ph.metric("⚠️ 위험 수준", "—")
-count_ph.metric("🚗 충돌 객체", "—")
+count_ph.metric("🚗 충돌 예상 객체", "—")
 rttc_ph.metric("⏱️ 예상 재재 TTC", "—")
 dataset_ph.metric("🗄️ 데이터셋", dataset_mode)
 
@@ -388,7 +398,7 @@ if run_simulation or resume_simulation:
                 ttc_str = f"{min_ttc_frame:.2f} s" if min_ttc_frame < 10.0 else "—"
                 ttc_ph.metric("🛡️ TTC (최소)", ttc_str)
                 danger_ph.metric("⚠️ 위험 수준", frame_status)
-                count_ph.metric("🚗 충돌 객체", len(risk_objs))
+                count_ph.metric("🚗 충돌 예상 객체", len(risk_objs))
                 rttc_ph.metric("⏱️ 예상 재재 TTC", ttc_str)
                 cam_meta_placeholder.markdown(
                     '<div style="color:#888;font-size:12px;margin-top:4px">'
@@ -494,7 +504,7 @@ if run_simulation or resume_simulation:
             ttc_str = f"{min_ttc_frame:.2f} s" if min_ttc_frame < 10.0 else "—"
             ttc_ph.metric("🛡️ TTC (최소)", ttc_str)
             danger_ph.metric("⚠️ 위험 수준", frame_status)
-            count_ph.metric("🚗 충돌 객체", len(risk_objs))
+            count_ph.metric("🚗 충돌 예상 객체", len(risk_objs))
             rttc_ph.metric("⏱️ 예상 재재 TTC", ttc_str)
             cam_meta_placeholder.markdown(
                 f'<div style="color:#888;font-size:12px;margin-top:4px">'
@@ -607,7 +617,7 @@ if run_simulation or resume_simulation:
             ttc_str = f"{min_ttc_frame:.2f} s" if min_ttc_frame < 10.0 else "—"
             ttc_ph.metric("🛡️ TTC (최소)", ttc_str)
             danger_ph.metric("⚠️ 위험 수준", frame_status)
-            count_ph.metric("🚗 충돌 객체", len(risk_objs))
+            count_ph.metric("🚗 충돌 예상 객체", len(risk_objs))
             rttc_ph.metric("⏱️ 예상 재재 TTC", ttc_str)
             cam_meta_placeholder.markdown(
                 '<div style="color:#888;font-size:12px;margin-top:4px">'
