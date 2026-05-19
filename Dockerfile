@@ -14,11 +14,11 @@ RUN ln -s /usr/bin/python3.10 /usr/bin/python
 
 WORKDIR /app
 
-# CUDA 12.8 호환 PyTorch 설치
+# CUDA 12.2 호환 PyTorch 설치 (Tesla P100 SM_60)
 RUN pip install --no-cache-dir \
-    torch==2.10.0+cu128 \
-    torchvision==0.25.0+cu128 \
-    --index-url https://download.pytorch.org/whl/cu128
+    torch==2.4.0+cu122 \
+    torchvision==0.19.0+cu122 \
+    --index-url https://download.pytorch.org/whl/cu122
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

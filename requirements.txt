@@ -1,7 +1,7 @@
-# Deep Learning (CUDA 12.8)
---extra-index-url https://download.pytorch.org/whl/cu128
-torch==2.10.0+cu128
-torchvision==0.25.0+cu128
+# Deep Learning (CUDA 12.2, Tesla P100 SM_60 호환)
+--extra-index-url https://download.pytorch.org/whl/cu122
+torch==2.4.0+cu122
+torchvision==0.19.0+cu122
 
 # Object Detection
 ultralytics==8.4.24
