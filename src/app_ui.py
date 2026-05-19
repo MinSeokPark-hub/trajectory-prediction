@@ -49,35 +49,6 @@ if 'resume_frame' not in st.session_state:
 if 'resume_scene' not in st.session_state:
     st.session_state.resume_scene = None
 
-st.sidebar.header("🛠️ System Settings")
-dataset_mode      = st.sidebar.radio("📂 데이터셋 선택", ["nuScenes", "ETH/UCY (SGAN)", "KITTI"])
-ttc_threshold     = st.sidebar.slider("Danger TTC Threshold (s)",  0.5, 3.0, 1.5, 0.1)
-warning_threshold = st.sidebar.slider("Warning TTC Threshold (s)", 3.0, 5.0, 4.0, 0.5)
-frame_skip        = st.sidebar.slider("Frame Skip (빠를수록 ↑)", 1, 5, 1, 1)
-sleep_time        = st.sidebar.slider("Frame Delay (s)", 0.0, 1.0, 0.3, 0.05)
-st.sidebar.markdown("---")
-st.sidebar.markdown("**🗺️ GPS 뷰 설정**")
-gps_fixed = st.sidebar.checkbox("📍 자차 중심 고정", value=False)
-gps_zoom  = st.sidebar.slider("줌 범위 (m)", 5, 50, 20, 5) if gps_fixed else 20
-st.sidebar.markdown("---")
-if dataset_mode == "KITTI":
-    KITTI_LABEL_DIR = "/workspace/minseok_park/data/kitti/labels"
-    KITTI_IMAGE_DIR = "/workspace/minseok_park/data/kitti/images"
-    kitti_sequences = sorted([f.replace('.txt','') for f in os.listdir(KITTI_LABEL_DIR) if f.endswith('.txt')])
-    kitti_seq = st.sidebar.selectbox("📁 KITTI 시퀀스", kitti_sequences)
-else:
-    kitti_seq = None
-
-col_btn1, col_btn2 = st.sidebar.columns(2)
-run_simulation    = col_btn1.button("▶️ 시작", use_container_width=True)
-stop_simulation   = col_btn2.button("⏹️ 정지", use_container_width=True)
-resume_simulation = st.sidebar.button("⏩ 재개", use_container_width=True,
-                                      disabled=st.session_state.resume_frame is None)
-
-if run_simulation:
-    st.session_state.resume_frame = None
-    st.session_state.resume_scene = None
-
 @st.cache_resource
 def init_nuscenes():
     DATAROOT = "/workspace/minseok_park/data/nuscenes/v1.0-mini"
@@ -107,6 +78,42 @@ def init_sgan():
         st.stop()
     df = parser.load(txt_files[0])
     return engine, df
+
+st.sidebar.header("🛠️ System Settings")
+dataset_mode      = st.sidebar.radio("📂 데이터셋 선택", ["nuScenes", "ETH/UCY (SGAN)", "KITTI"])
+ttc_threshold     = st.sidebar.slider("Danger TTC Threshold (s)",  0.5, 3.0, 1.5, 0.1)
+warning_threshold = st.sidebar.slider("Warning TTC Threshold (s)", 3.0, 5.0, 4.0, 0.5)
+frame_skip        = st.sidebar.slider("Frame Skip (빠를수록 ↑)", 1, 5, 1, 1)
+sleep_time        = st.sidebar.slider("Frame Delay (s)", 0.0, 1.0, 0.3, 0.05)
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🗺️ GPS 뷰 설정**")
+gps_fixed = st.sidebar.checkbox("📍 자차 중심 고정", value=False)
+gps_zoom  = st.sidebar.slider("줌 범위 (m)", 5, 50, 20, 5) if gps_fixed else 20
+st.sidebar.markdown("---")
+if dataset_mode == "nuScenes":
+    kitti_seq = None
+    _, _ns_df, _, _ = init_nuscenes()
+    nuscenes_scenes = sorted(_ns_df['scene'].unique().tolist())
+    nuscenes_scene = st.sidebar.selectbox("📁 nuScenes 씬", nuscenes_scenes)
+elif dataset_mode == "KITTI":
+    nuscenes_scene = None
+    KITTI_LABEL_DIR = "/workspace/minseok_park/data/kitti/labels"
+    KITTI_IMAGE_DIR = "/workspace/minseok_park/data/kitti/images"
+    kitti_sequences = sorted([f.replace('.txt','') for f in os.listdir(KITTI_LABEL_DIR) if f.endswith('.txt')])
+    kitti_seq = st.sidebar.selectbox("📁 KITTI 시퀀스", kitti_sequences)
+else:
+    kitti_seq = None
+    nuscenes_scene = None
+
+col_btn1, col_btn2 = st.sidebar.columns(2)
+run_simulation    = col_btn1.button("▶️ 시작", use_container_width=True)
+stop_simulation   = col_btn2.button("⏹️ 정지", use_container_width=True)
+resume_simulation = st.sidebar.button("⏩ 재개", use_container_width=True,
+                                      disabled=st.session_state.resume_frame is None)
+
+if run_simulation:
+    st.session_state.resume_frame = None
+    st.session_state.resume_scene = None
 
 def get_color(ttc, ttc_threshold, warning_threshold):
     if ttc <= ttc_threshold:
@@ -312,11 +319,8 @@ if run_simulation or resume_simulation:
         _resume_frame = st.session_state.resume_frame if resume_simulation else None
 
         # scene 순서대로, 각 scene의 프레임 순서대로 순회
-        scenes = full_df['scene'].unique()
+        scenes = [nuscenes_scene]
         for scene_name in scenes:
-            if _resume_scene and scene_name < _resume_scene:
-                continue
-
             scene_df = full_df[full_df['scene'] == scene_name]
             frames   = sorted(scene_df['frame'].unique())[::frame_skip]
 
