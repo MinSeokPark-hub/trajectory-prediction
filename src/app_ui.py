@@ -197,6 +197,8 @@ def draw_boxes_on_image(img_path, boxes):
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
         draw.rectangle([x1, max(0, y1-20), x1+len(label)*8, y1], fill=color)
         draw.text((x1+2, max(2, y1-18)), label, fill=(255, 255, 255))
+    w, h = img.size
+    img = img.resize((w // 2, h // 2))
     return img
 
 if dataset_mode == "nuScenes":
@@ -407,9 +409,16 @@ if run_simulation or resume_simulation:
                             label = f"{obj['type']} {ttc:.1f}s"
                             boxes_to_draw.append((x1, y1, x2, y2, label, color_rgb))
 
+                all_x = current_df['pos_x'].tolist()
+                all_y = current_df['pos_y'].tolist()
+                pad = 10
+                x_min = min(all_x + [0]) - pad
+                x_max = max(all_x + [0]) + pad
+                y_min = min(all_y + [0]) - pad
+                y_max = max(all_y + [0]) + pad
                 fig_map.update_layout(
-                    xaxis=dict(range=[-15, 15], title="X (m, 자차 기준)"),
-                    yaxis=dict(range=[-5,  15], title="Y (m, 자차 기준)", scaleanchor="x"),
+                    xaxis=dict(range=[x_min, x_max], title="X (m, 자차 기준)"),
+                    yaxis=dict(range=[y_min, y_max], title="Y (m, 자차 기준)", scaleanchor="x"),
                     height=500, margin=dict(l=0, r=0, b=0, t=0),
                     showlegend=False, plot_bgcolor="#e8f4e8"
                 )
