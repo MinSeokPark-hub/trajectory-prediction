@@ -23,6 +23,7 @@ joblib
 opencv-python==4.13.0.92
 Pillow==12.1.1
 pyquaternion
+nuscenes-devkit
 
 # Visualization
 matplotlib==3.10.8
