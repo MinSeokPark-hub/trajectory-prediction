@@ -56,6 +56,10 @@ warning_threshold = st.sidebar.slider("Warning TTC Threshold (s)", 3.0, 5.0, 4.0
 frame_skip        = st.sidebar.slider("Frame Skip (빠를수록 ↑)", 1, 5, 1, 1)
 sleep_time        = st.sidebar.slider("Frame Delay (s)", 0.0, 1.0, 0.3, 0.05)
 st.sidebar.markdown("---")
+st.sidebar.markdown("**🗺️ GPS 뷰 설정**")
+gps_fixed = st.sidebar.checkbox("📍 자차 중심 고정", value=False)
+gps_zoom  = st.sidebar.slider("줌 범위 (m)", 5, 50, 20, 5) if gps_fixed else 20
+st.sidebar.markdown("---")
 if dataset_mode == "KITTI":
     KITTI_LABEL_DIR = "/workspace/minseok_park/data/kitti/labels"
     KITTI_IMAGE_DIR = "/workspace/minseok_park/data/kitti/images"
@@ -409,19 +413,27 @@ if run_simulation or resume_simulation:
                             label = f"{obj['type']} {ttc:.1f}s"
                             boxes_to_draw.append((x1, y1, x2, y2, label, color_rgb))
 
-                all_x = current_df['pos_x'].tolist()
-                all_y = current_df['pos_y'].tolist()
-                pad = 10
-                x_min = min(all_x + [0]) - pad
-                x_max = max(all_x + [0]) + pad
-                y_min = min(all_y + [0]) - pad
-                y_max = max(all_y + [0]) + pad
-                fig_map.update_layout(
-                    xaxis=dict(range=[x_min, x_max], title="X (m, 자차 기준)"),
-                    yaxis=dict(range=[y_min, y_max], title="Y (m, 자차 기준)", scaleanchor="x"),
-                    height=500, margin=dict(l=0, r=0, b=0, t=0),
-                    showlegend=False, plot_bgcolor="#e8f4e8"
-                )
+                if gps_fixed:
+                    fig_map.update_layout(
+                        xaxis=dict(range=[-gps_zoom, gps_zoom], title="X (m, 자차 기준)"),
+                        yaxis=dict(range=[-gps_zoom, gps_zoom], title="Y (m, 자차 기준)", scaleanchor="x"),
+                        height=500, margin=dict(l=0, r=0, b=0, t=0),
+                        showlegend=False, plot_bgcolor="#e8f4e8"
+                    )
+                else:
+                    all_x = current_df['pos_x'].tolist()
+                    all_y = current_df['pos_y'].tolist()
+                    pad = 10
+                    x_min = min(all_x + [0]) - pad
+                    x_max = max(all_x + [0]) + pad
+                    y_min = min(all_y + [0]) - pad
+                    y_max = max(all_y + [0]) + pad
+                    fig_map.update_layout(
+                        xaxis=dict(range=[x_min, x_max], title="X (m, 자차 기준)"),
+                        yaxis=dict(range=[y_min, y_max], title="Y (m, 자차 기준)", scaleanchor="x"),
+                        height=500, margin=dict(l=0, r=0, b=0, t=0),
+                        showlegend=False, plot_bgcolor="#e8f4e8"
+                    )
 
                 if img_path and os.path.exists(img_path):
                     rendered_img = draw_boxes_on_image(img_path, boxes_to_draw)
@@ -429,7 +441,7 @@ if run_simulation or resume_simulation:
                 else:
                     cam_placeholder.info("카메라 이미지 없음")
 
-                map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{scene_name}_{f_idx}")
+                map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{scene_name}_{f_idx}", config={'displayModeBar': False})
 
                 _render_status(danger_objs, warning_objs, safe_count)
                 now_kst = datetime.now(KST).strftime("%H:%M:%S")
@@ -524,13 +536,21 @@ if run_simulation or resume_simulation:
                 marker=dict(size=18, color='blue', symbol='circle'),
                 text=["🚗 EGO"], textposition="top center", name="자차"
             ))
-            fig_map.update_layout(
-                xaxis=dict(range=[-15, 15], title="X (m)"),
-                yaxis=dict(range=[-2,  50], title="Z/Depth (m)"),
-                height=500, margin=dict(l=0, r=0, b=0, t=0),
-                showlegend=False, plot_bgcolor="#e8f4e8"
-            )
-            map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"kitti_map_{f_idx}")
+            if gps_fixed:
+                fig_map.update_layout(
+                    xaxis=dict(range=[-gps_zoom, gps_zoom], title="X (m)"),
+                    yaxis=dict(range=[-gps_zoom, gps_zoom], title="Z/Depth (m)"),
+                    height=500, margin=dict(l=0, r=0, b=0, t=0),
+                    showlegend=False, plot_bgcolor="#e8f4e8"
+                )
+            else:
+                fig_map.update_layout(
+                    xaxis=dict(range=[-15, 15], title="X (m)"),
+                    yaxis=dict(range=[-2,  50], title="Z/Depth (m)"),
+                    height=500, margin=dict(l=0, r=0, b=0, t=0),
+                    showlegend=False, plot_bgcolor="#e8f4e8"
+                )
+            map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"kitti_map_{f_idx}", config={'displayModeBar': False})
 
             if os.path.exists(img_path):
                 rendered = draw_boxes_on_image(img_path, boxes_to_draw)
@@ -649,8 +669,8 @@ if run_simulation or resume_simulation:
                 showlegend=False, plot_bgcolor="#1E1E1E"
             )
 
-            map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{f_idx}")
-            cam_placeholder.plotly_chart(fig_cam, use_container_width=True, key=f"cam_{f_idx}")
+            map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{f_idx}", config={'displayModeBar': False})
+            cam_placeholder.plotly_chart(fig_cam, use_container_width=True, key=f"cam_{f_idx}", config={'displayModeBar': False})
 
             _render_status(danger_objs, warning_objs, safe_count)
             now_kst = datetime.now(KST).strftime("%H:%M:%S")
