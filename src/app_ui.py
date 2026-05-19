@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import glob
+import math
 import numpy as np
 from datetime import datetime, timezone, timedelta
 from PIL import Image, ImageDraw
@@ -221,10 +222,7 @@ else:
 
 def _live_header(title):
     st.markdown(
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-        f'<span style="font-size:17px;font-weight:600">{title}</span>'
-        f'<span style="background:#2ecc71;color:white;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:bold">LIVE</span>'
-        f'</div>',
+        f'<div style="font-size:17px;font-weight:600;margin-bottom:6px">{title}</div>',
         unsafe_allow_html=True
     )
 
@@ -346,6 +344,16 @@ if run_simulation or resume_simulation:
                 img_path     = get_cam_image_path(nusc, sample_token, DATAROOT) if sample_token else None
                 boxes_to_draw = []
 
+                fov_dist = gps_zoom if gps_fixed else 20
+                half_rad = math.radians(35)
+                fig_map.add_trace(go.Scatter(
+                    x=[-fov_dist * math.sin(half_rad), 0, fov_dist * math.sin(half_rad)],
+                    y=[fov_dist * math.cos(half_rad),  0, fov_dist * math.cos(half_rad)],
+                    fill='toself',
+                    fillcolor='rgba(255, 255, 150, 0.25)',
+                    line=dict(color='rgba(220, 200, 50, 0.5)', width=1),
+                    showlegend=False, hoverinfo='skip'
+                ))
                 fig_map.add_trace(go.Scatter(
                     x=[0], y=[0],
                     mode='markers+text',
