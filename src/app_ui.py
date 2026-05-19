@@ -344,7 +344,7 @@ if run_simulation or resume_simulation:
                 img_path     = get_cam_image_path(nusc, sample_token, DATAROOT) if sample_token else None
                 boxes_to_draw = []
 
-fig_map.add_trace(go.Scatter(
+                fig_map.add_trace(go.Scatter(
                     x=[0], y=[0],
                     mode='markers+text',
                     marker=dict(size=18, color='blue', symbol='circle'),
