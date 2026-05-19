@@ -344,17 +344,7 @@ if run_simulation or resume_simulation:
                 img_path     = get_cam_image_path(nusc, sample_token, DATAROOT) if sample_token else None
                 boxes_to_draw = []
 
-                fov_dist = gps_zoom if gps_fixed else 20
-                half_rad = math.radians(35)
-                fig_map.add_trace(go.Scatter(
-                    x=[-fov_dist * math.sin(half_rad), 0, fov_dist * math.sin(half_rad)],
-                    y=[fov_dist * math.cos(half_rad),  0, fov_dist * math.cos(half_rad)],
-                    fill='toself',
-                    fillcolor='rgba(255, 255, 150, 0.25)',
-                    line=dict(color='rgba(220, 200, 50, 0.5)', width=1),
-                    showlegend=False, hoverinfo='skip'
-                ))
-                fig_map.add_trace(go.Scatter(
+fig_map.add_trace(go.Scatter(
                     x=[0], y=[0],
                     mode='markers+text',
                     marker=dict(size=18, color='blue', symbol='circle'),
