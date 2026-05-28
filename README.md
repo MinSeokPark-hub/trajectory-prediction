@@ -136,6 +136,57 @@ graph TD
 | **KITTI** | 도로 주행 라이다·카메라 데이터 | `kitti_parser.py` |
 | **ETH/UCY** | 보행자 궤적 공개 데이터셋 (SGAN 포맷) | `sgan_parser.py` |
 
+### 공통 출력 스키마
+
+3개 파서 모두 동일한 컬럼 구조로 출력합니다.
+
+| 컬럼 | 설명 |
+|------|------|
+| `frame` | 프레임 번호 |
+| `track_id` | 객체 고유 ID |
+| `type` | 객체 유형 (Pedestrian / Vehicle 등) |
+| `x`, `y` | 픽셀 또는 상대 좌표 |
+| `w`, `h` | 객체 크기 |
+| `depth` | 자차 기준 거리 (m) |
+| `x_pix`, `y_pix`, `w_pix`, `h_pix` | 픽셀 좌표 |
+| `pos_x`, `pos_y`, `pos_z` | 3D 위치 |
+
+### 데이터셋별 상세 구조
+
+#### 1. KITTI (`kitti_parser.py`)
+
+- **FPS**: 10.0
+- **원본 형식**: space-separated txt 라벨 파일
+- **객체 유형**: `Pedestrian`, `Cyclist`, `Car`, `Van`, `Truck`
+- **3D 좌표**: 카메라 기준 실제 미터(m) 단위 (`pos_x/y/z`)
+- **특징**: `bbox`에서 픽셀 좌표 계산, `pos_z` = 정면 거리(depth)
+
+#### 2. ETH/UCY — SGAN (`sgan_parser.py`)
+
+- **FPS**: 2.5
+- **원본 형식**: `frame track_id pos_x pos_y` 공백 구분 txt
+- **객체 유형**: 전부 `Pedestrian` (고정)
+- **3D 좌표**: 조감도(top-view) 2D 좌표 (`pos_x`, `pos_y`)
+- **특징**: 이미지 없음, 픽셀 좌표(`x_pix` 등) 전부 0, `pos_y` → `pos_z`로 매핑
+
+#### 3. nuScenes (`nuscenes_parser.py`)
+
+- **FPS**: 2.0
+- **원본 형식**: nuScenes SDK API (JSON DB)
+- **객체 유형**: `Pedestrian`, `Vehicle` (car / truck / bus / bicycle 포함)
+- **3D 좌표**: 절대 좌표(`abs_x/y`) + 자차 기준 상대 좌표(`pos_x/y`) + `depth`
+- **추가 전용 컬럼**: `ego_x/y/z`, `img_path`, `scene`, `rot_w/x/y/z` (quaternion), `obj_l`, `obj_z`
+
+### 데이터셋 비교
+
+| | KITTI | ETH/UCY | nuScenes |
+|---|---|---|---|
+| 이미지 | O | X | O (`img_path`) |
+| FPS | 10 | 2.5 | 2 |
+| 좌표계 | 카메라 정면 | 조감도 2D | 절대 + 상대 혼용 |
+| 자차 정보 | X | X | O (`ego_x/y/z`) |
+| 씬 구분 | 파일별 | 파일별 | `scene` 컬럼 |
+
 ---
 
 ## Streamlit 대시보드
