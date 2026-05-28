@@ -30,3 +30,13 @@ datasets/
 
 # Generated output
 output/
+
+# Logs
+*.log
+nohup.out
+
+# Installers & binaries
+Miniconda3-*.sh
+
+# Temp files
+0.1
