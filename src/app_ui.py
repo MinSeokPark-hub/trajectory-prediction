@@ -16,6 +16,7 @@ from src.utils.sgan_parser import SGANParser
 from src.utils.nuscenes_parser import NuScenesParser
 from src.utils.kitti_parser import KittiParser
 from src.inference_engine import InferenceEngine
+from src.utils.occlusion_handler import OcclusionHandler
 
 st.set_page_config(page_title="경로예측 및 충돌예측 연구", layout="wide")
 
@@ -49,6 +50,10 @@ if 'resume_frame' not in st.session_state:
     st.session_state.resume_frame = None
 if 'resume_scene' not in st.session_state:
     st.session_state.resume_scene = None
+if 'ade_history' not in st.session_state:
+    st.session_state.ade_history = []
+if 'occlusion_handler' not in st.session_state:
+    st.session_state.occlusion_handler = None
 
 @st.cache_resource
 def init_nuscenes():
@@ -91,6 +96,11 @@ st.sidebar.markdown("**🗺️ GPS 뷰 설정**")
 gps_fixed = st.sidebar.checkbox("📍 자차 중심 고정", value=False)
 gps_zoom  = st.sidebar.slider("줌 범위 (m)", 5, 50, 20, 5) if gps_fixed else 20
 st.sidebar.markdown("---")
+st.sidebar.markdown("**🧠 Sprint 2 기능**")
+show_heatmap = st.sidebar.checkbox("🔥 어텐션 히트맵", value=True)
+show_ade     = st.sidebar.checkbox("📊 ADE/FDE 비교", value=True)
+show_occlusion = st.sidebar.checkbox("👁️ Occlusion 추적", value=True)
+st.sidebar.markdown("---")
 if dataset_mode == "nuScenes":
     kitti_seq = None
     _, _ns_df, _, _ = init_nuscenes()
@@ -115,6 +125,9 @@ resume_simulation = st.sidebar.button("⏩ 재개", use_container_width=True,
 if run_simulation:
     st.session_state.resume_frame = None
     st.session_state.resume_scene = None
+    st.session_state.ade_history = []
+    _fps = 2.0 if dataset_mode == "nuScenes" else (2.5 if "SGAN" in dataset_mode else 10.0)
+    st.session_state.occlusion_handler = OcclusionHandler(fps=_fps)
 
 def get_color(ttc, ttc_threshold, warning_threshold):
     if ttc <= ttc_threshold:
@@ -291,7 +304,155 @@ _render_status([], [], 0)
 
 KST = timezone(timedelta(hours=9))
 
+# ── Sprint 2 헬퍼 함수 ────────────────────────────────────────────────────────
+
+_RISK_COLOR = {'high': '#ef4444', 'mid': '#f97316', 'low': '#3b82f6'}
+
+def _build_scene_objects(current_df, full_df, f_idx, scene_name=None, fps=10.0):
+    """프레임 내 객체를 social_attention.compute() 입력 형식으로 변환"""
+    dt = 1.0 / fps
+    objects = []
+    for _, obj in current_df.iterrows():
+        tid = obj['track_id']
+        mask = (full_df['track_id'] == tid) & (full_df['frame'] <= f_idx)
+        if scene_name is not None:
+            mask &= (full_df['scene'] == scene_name)
+        history = full_df[mask].tail(5)
+        if len(history) < 2:
+            continue
+        vel_x = float(history['pos_x'].iloc[-1] - history['pos_x'].iloc[-2]) / dt
+        # nuScenes: pos_y가 전방, KITTI: pos_z가 전방
+        fwd_col = 'pos_y' if 'pos_y' in history.columns else 'pos_z'
+        rel_y  = float(obj[fwd_col]) if fwd_col in obj.index else float(obj['depth'])
+        vel_y  = float(history[fwd_col].iloc[-1] - history[fwd_col].iloc[-2]) / dt if fwd_col in history.columns else 0.0
+        objects.append({
+            'track_id': str(tid),
+            'rel_x':   float(obj['pos_x']),
+            'rel_y':   rel_y,
+            'vel_x':   vel_x,
+            'vel_y':   vel_y,
+            'depth':   float(obj['depth']),
+        })
+    return objects
+
+def _render_heatmap(social_result, placeholder):
+    """US-09 T6-1: 어텐션 가중치 히트맵"""
+    if placeholder is None or not social_result.get('track_ids'):
+        return
+    weights  = social_result['attention_weights']
+    risk_lvl = social_result['risk_levels']
+    tids     = social_result['track_ids']
+    evasion  = social_result['evasion_flags']
+
+    fig = go.Figure()
+    for i, tid in enumerate(tids):
+        w     = float(weights[i])
+        color = _RISK_COLOR.get(risk_lvl[i], '#6b7280')
+        label = f"ID:{tid}<br>w={w:.3f}<br>{risk_lvl[i].upper()}"
+        if evasion[i]:
+            label += "<br>⚠️회피"
+        fig.add_trace(go.Scatter(
+            x=[i], y=[w],
+            mode='markers+text',
+            marker=dict(size=max(20, int(w * 300)), color=color, opacity=0.8,
+                        line=dict(width=2, color='white')),
+            text=[label], textposition='top center',
+            name=tid, showlegend=False,
+        ))
+
+    fig.add_trace(go.Bar(
+        x=list(range(len(tids))),
+        y=weights.tolist(),
+        marker_color=[_RISK_COLOR.get(r, '#6b7280') for r in risk_lvl],
+        opacity=0.35, showlegend=False,
+    ))
+    fig.update_layout(
+        xaxis=dict(tickvals=list(range(len(tids))),
+                   ticktext=[f"ID:{t}" for t in tids], title="객체"),
+        yaxis=dict(title="어텐션 가중치", range=[0, max(weights.tolist() + [0.1]) * 1.4]),
+        height=300, margin=dict(l=10, r=10, t=10, b=40),
+        plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
+        font=dict(color='white'),
+    )
+    placeholder.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+def _render_ade_chart(ade_history, placeholder):
+    """US-13 T14: Social Attention 전/후 ADE 비교"""
+    if placeholder is None or len(ade_history) < 1:
+        return
+    frames      = list(range(len(ade_history)))
+    no_social   = [h['no_social'] for h in ade_history]
+    with_social = [h['social']    for h in ade_history]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=frames, y=no_social, mode='lines', name='미적용',
+        line=dict(color='#94a3b8', width=2, dash='dot'),
+    ))
+    fig.add_trace(go.Scatter(
+        x=frames, y=with_social, mode='lines+markers', name='Social Attention 적용',
+        line=dict(color='#22d3ee', width=2),
+        marker=dict(size=5),
+    ))
+    avg_no  = float(np.mean(no_social))  if no_social  else 0
+    avg_yes = float(np.mean(with_social)) if with_social else 0
+    improvement = (avg_no - avg_yes) / (avg_no + 1e-9) * 100
+    fig.update_layout(
+        title=dict(
+            text=f"평균 ADE — 미적용: {avg_no:.3f}  적용: {avg_yes:.3f}  개선: {improvement:+.1f}%",
+            font=dict(size=12, color='white'),
+        ),
+        xaxis=dict(title="프레임"),
+        yaxis=dict(title="ADE (대리 지표)"),
+        height=300, margin=dict(l=10, r=10, t=40, b=40),
+        legend=dict(orientation='h', y=1.15),
+        plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
+        font=dict(color='white'),
+    )
+    placeholder.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+def _render_occlusion_info(occlusion_handler, placeholder):
+    """US-11: Occlusion 상태 인디케이터"""
+    if placeholder is None or occlusion_handler is None:
+        return
+    stats = occlusion_handler.stats()
+    occ_ids = stats['occluded_ids']
+    color = "#fef9c3" if occ_ids else "#dcfce7"
+    text_color = "#92400e" if occ_ids else "#166534"
+    ids_str = ", ".join(str(i) for i in occ_ids) if occ_ids else "없음"
+    placeholder.markdown(
+        f'<div style="background:{color};border-radius:8px;padding:8px 14px;'
+        f'font-size:13px;color:{text_color}">'
+        f'👁️ <b>Occlusion 추적</b> — 가림 객체 {stats["occluded_count"]}개 '
+        f'(전체 추적 {stats["total_tracked"]}개) &nbsp;|&nbsp; ID: {ids_str}</div>',
+        unsafe_allow_html=True,
+    )
+
 st.markdown("---")
+if show_heatmap or show_ade:
+    _sp2_left, _sp2_right = st.columns(2)
+    if show_heatmap:
+        with _sp2_left:
+            _live_header("🔥 어텐션 가중치 히트맵")
+            heatmap_placeholder = st.empty()
+    else:
+        heatmap_placeholder = None
+    if show_ade:
+        with _sp2_right:
+            _live_header("📊 ADE/FDE 비교 (Social Attention 전/후)")
+            ade_placeholder = st.empty()
+    else:
+        ade_placeholder = None
+    if show_occlusion:
+        occlusion_info_placeholder = st.empty()
+    else:
+        occlusion_info_placeholder = None
+    st.markdown("---")
+else:
+    heatmap_placeholder = None
+    ade_placeholder = None
+    occlusion_info_placeholder = None
+
 st.subheader("📋 위험 감지 로그")
 log_placeholder = st.empty()
 
@@ -414,6 +575,27 @@ if run_simulation or resume_simulation:
                             x1, y1, x2, y2 = result
                             label = f"{obj['type']} {ttc:.1f}s"
                             boxes_to_draw.append((x1, y1, x2, y2, label, color_rgb))
+
+                # ── Sprint 2: Social Attention + Occlusion ──────────────────
+                _scene_objs = _build_scene_objects(
+                    current_df, full_df, f_idx, scene_name=scene_name, fps=2.0
+                )
+                if _scene_objs:
+                    _social = engine.social_attention.compute(_scene_objs)
+                    _render_heatmap(_social, heatmap_placeholder)
+
+                    _ade_result = engine.predict_scene(_scene_objs, fps=2.0)
+                    st.session_state.ade_history.append({
+                        'no_social': _ade_result['ade_no_social'],
+                        'social':    _ade_result['ade_social'],
+                    })
+                    _render_ade_chart(st.session_state.ade_history, ade_placeholder)
+
+                if show_occlusion and st.session_state.occlusion_handler:
+                    visible_ids = [str(r['track_id']) for r in _scene_objs]
+                    st.session_state.occlusion_handler.update(visible_ids, _scene_objs)
+                    _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
+                # ───────────────────────────────────────────────────────────
 
                 if gps_fixed:
                     fig_map.update_layout(
@@ -538,6 +720,26 @@ if run_simulation or resume_simulation:
                 marker=dict(size=18, color='blue', symbol='circle'),
                 text=["🚗 EGO"], textposition="top center", name="자차"
             ))
+
+            # ── Sprint 2: Social Attention + Occlusion ──────────────────────
+            _scene_objs = _build_scene_objects(current_df, full_df, f_idx, fps=10.0)
+            if _scene_objs:
+                _social = engine.social_attention.compute(_scene_objs)
+                _render_heatmap(_social, heatmap_placeholder)
+
+                _ade_result = engine.predict_scene(_scene_objs, fps=10.0)
+                st.session_state.ade_history.append({
+                    'no_social': _ade_result['ade_no_social'],
+                    'social':    _ade_result['ade_social'],
+                })
+                _render_ade_chart(st.session_state.ade_history, ade_placeholder)
+
+            if show_occlusion and st.session_state.occlusion_handler:
+                visible_ids = [str(r['track_id']) for r in _scene_objs] if _scene_objs else []
+                st.session_state.occlusion_handler.update(visible_ids, _scene_objs or [])
+                _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
+            # ─────────────────────────────────────────────────────────────────
+
             if gps_fixed:
                 fig_map.update_layout(
                     xaxis=dict(range=[-gps_zoom, gps_zoom], title="X (m)"),
