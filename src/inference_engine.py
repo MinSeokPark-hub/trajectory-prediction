@@ -147,42 +147,47 @@ class InferenceEngine:
                 'attention_weight': attn_w,
             })
 
-        # ADE 비교 (Social Attention 적용 전/후) — T14
-        ade_no_social, ade_social = self._compute_ade_comparison(objects, predictions, fps)
+        # ADE/FDE 비교 (Social Attention 적용 전/후) — T14
+        ade_no_social, ade_social, fde_no_social, fde_social = self._compute_ade_comparison(objects, predictions, fps)
 
         return {
             'social': social_result,
             'predictions': predictions,
             'ade_no_social': ade_no_social,
             'ade_social': ade_social,
+            'fde_no_social': fde_no_social,
+            'fde_social': fde_social,
         }
 
     def _compute_ade_comparison(self, objects, predictions, fps):
         """
-        Social Attention 미적용(균등 가중치) vs 적용 ADE 근사 비교 (T14)
-        실제 미래 위치가 없으므로 예측 분산을 ADE 대리 지표로 사용.
+        Social Attention 미적용(균등 가중치) vs 적용 ADE/FDE 근사 비교 (T14)
+        실제 미래 위치가 없으므로 예측 분산을 오차 대리 지표로 사용.
+        ADE: 전체 스텝 평균 변위 / FDE: 마지막 스텝 변위
         """
         if not predictions:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
-        # 미적용: 모든 객체 동등 취급 (가중치 균등)
         uniform_weight = 1.0 / max(len(objects), 1)
-        pred_errors_no_social = []
-        pred_errors_social = []
+        ade_no_s, ade_s, fde_no_s, fde_s = [], [], [], []
 
         for pred in predictions:
             if pred['pred_traj'] is None:
                 continue
             traj = np.array(pred['pred_traj'])
-            # 예측 궤적의 프레임 간 변위 분산을 오차 대리 지표로 사용
             displacements = np.linalg.norm(np.diff(traj[:, :2], axis=0), axis=1)
-            mean_disp = displacements.mean() if len(displacements) > 0 else 0.0
+            if len(displacements) == 0:
+                continue
 
-            # Social Attention 미적용: 단순 물리 등속 예측과의 차이
-            pred_errors_no_social.append(mean_disp * uniform_weight * len(objects))
-            # Social Attention 적용: 가중치 반영 (위험 객체 예측에 더 집중)
-            pred_errors_social.append(mean_disp * pred['attention_weight'] * len(objects))
+            mean_disp  = displacements.mean()
+            final_disp = displacements[-1]
+            w = pred['attention_weight']
+            n = len(objects)
 
-        ade_no_social = float(np.mean(pred_errors_no_social)) if pred_errors_no_social else 0.0
-        ade_social = float(np.mean(pred_errors_social)) if pred_errors_social else 0.0
-        return ade_no_social, ade_social
+            ade_no_s.append(mean_disp  * uniform_weight * n)
+            ade_s.append(mean_disp     * w              * n)
+            fde_no_s.append(final_disp * uniform_weight * n)
+            fde_s.append(final_disp    * w              * n)
+
+        def _mean(lst): return float(np.mean(lst)) if lst else 0.0
+        return _mean(ade_no_s), _mean(ade_s), _mean(fde_no_s), _mean(fde_s)

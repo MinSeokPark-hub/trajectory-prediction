@@ -390,30 +390,45 @@ def _render_heatmap(social_result, placeholder):
     placeholder.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 def _render_ade_chart(ade_history, placeholder):
-    """US-13 T14: Social Attention 전/후 ADE 비교"""
+    """US-13 T14: Social Attention 전/후 ADE/FDE 비교"""
     if placeholder is None or len(ade_history) < 1:
         return
     frames      = list(range(len(ade_history)))
-    no_social   = [h['no_social'] for h in ade_history]
-    with_social = [h['social']    for h in ade_history]
+    ade_no  = [h['no_social']          for h in ade_history]
+    ade_yes = [h['social']             for h in ade_history]
+    fde_no  = [h.get('fde_no_social', 0) for h in ade_history]
+    fde_yes = [h.get('fde_social', 0)    for h in ade_history]
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=frames, y=no_social, mode='lines', name='미적용',
+        x=frames, y=ade_no, mode='lines', name='ADE 미적용',
         line=dict(color='#94a3b8', width=2, dash='dot'),
     ))
     fig.add_trace(go.Scatter(
-        x=frames, y=with_social, mode='lines+markers', name='Social Attention 적용',
+        x=frames, y=ade_yes, mode='lines+markers', name='ADE 적용',
         line=dict(color='#22d3ee', width=2),
-        marker=dict(size=5),
+        marker=dict(size=4),
     ))
-    avg_no  = float(np.mean(no_social))  if no_social  else 0
-    avg_yes = float(np.mean(with_social)) if with_social else 0
-    improvement = (avg_no - avg_yes) / (avg_no + 1e-9) * 100
+    fig.add_trace(go.Scatter(
+        x=frames, y=fde_no, mode='lines', name='FDE 미적용',
+        line=dict(color='#f97316', width=2, dash='dot'),
+    ))
+    fig.add_trace(go.Scatter(
+        x=frames, y=fde_yes, mode='lines+markers', name='FDE 적용',
+        line=dict(color='#a78bfa', width=2),
+        marker=dict(size=4),
+    ))
+    avg_ade_no  = float(np.mean(ade_no))  if ade_no  else 0
+    avg_ade_yes = float(np.mean(ade_yes)) if ade_yes else 0
+    avg_fde_no  = float(np.mean(fde_no))  if fde_no  else 0
+    avg_fde_yes = float(np.mean(fde_yes)) if fde_yes else 0
+    ade_imp = (avg_ade_no - avg_ade_yes) / (avg_ade_no + 1e-9) * 100
+    fde_imp = (avg_fde_no - avg_fde_yes) / (avg_fde_no + 1e-9) * 100
     fig.update_layout(
         title=dict(
-            text=f"평균 ADE — 미적용: {avg_no:.3f}  적용: {avg_yes:.3f}  개선: {improvement:+.1f}%",
-            font=dict(size=12, color='white'),
+            text=(f"ADE 미적용:{avg_ade_no:.3f} 적용:{avg_ade_yes:.3f} ({ade_imp:+.1f}%)  |  "
+                  f"FDE 미적용:{avg_fde_no:.3f} 적용:{avg_fde_yes:.3f} ({fde_imp:+.1f}%)"),
+            font=dict(size=11, color='white'),
         ),
         xaxis=dict(title="프레임"),
         yaxis=dict(title="ADE (대리 지표)"),
@@ -605,14 +620,27 @@ if run_simulation or resume_simulation:
                         _ade_result = engine.predict_scene(_scene_objs, fps=2.0)
                     if _ade_result:
                         st.session_state.ade_history.append({
-                            'no_social': _ade_result['ade_no_social'],
-                            'social':    _ade_result['ade_social'],
+                            'no_social':     _ade_result['ade_no_social'],
+                            'social':        _ade_result['ade_social'],
+                            'fde_no_social': _ade_result.get('fde_no_social', 0.0),
+                            'fde_social':    _ade_result.get('fde_social', 0.0),
                         })
                         _render_ade_chart(st.session_state.ade_history, ade_placeholder)
 
                 if show_occlusion and st.session_state.occlusion_handler:
                     visible_ids = [str(r['track_id']) for r in _scene_objs]
-                    st.session_state.occlusion_handler.update(visible_ids, _scene_objs)
+                    _ext = st.session_state.occlusion_handler.update(visible_ids, _scene_objs)
+                    for _vo in _ext:
+                        if not _vo.get('occluded'):
+                            continue
+                        fig_map.add_trace(go.Scatter(
+                            x=[_vo['rel_x']], y=[_vo['rel_y']],
+                            mode='markers+text',
+                            marker=dict(size=14, color='gray', symbol='circle-open',
+                                        opacity=0.5, line=dict(width=2, color='gray')),
+                            text=[f"(가림) ID:{_vo['track_id']}"],
+                            textposition='top center', showlegend=False,
+                        ))
                     _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
                 # ───────────────────────────────────────────────────────────
 
@@ -754,14 +782,27 @@ if run_simulation or resume_simulation:
                     _ade_result = engine.predict_scene(_scene_objs, fps=10.0)
                 if _ade_result:
                     st.session_state.ade_history.append({
-                        'no_social': _ade_result['ade_no_social'],
-                        'social':    _ade_result['ade_social'],
+                        'no_social':     _ade_result['ade_no_social'],
+                        'social':        _ade_result['ade_social'],
+                        'fde_no_social': _ade_result.get('fde_no_social', 0.0),
+                        'fde_social':    _ade_result.get('fde_social', 0.0),
                     })
                     _render_ade_chart(st.session_state.ade_history, ade_placeholder)
 
             if show_occlusion and st.session_state.occlusion_handler:
                 visible_ids = [str(r['track_id']) for r in _scene_objs] if _scene_objs else []
-                st.session_state.occlusion_handler.update(visible_ids, _scene_objs or [])
+                _ext = st.session_state.occlusion_handler.update(visible_ids, _scene_objs or [])
+                for _vo in _ext:
+                    if not _vo.get('occluded'):
+                        continue
+                    fig_map.add_trace(go.Scatter(
+                        x=[_vo['rel_x']], y=[_vo['rel_y']],
+                        mode='markers+text',
+                        marker=dict(size=14, color='gray', symbol='circle-open',
+                                    opacity=0.5, line=dict(width=2, color='gray')),
+                        text=[f"(가림) ID:{_vo['track_id']}"],
+                        textposition='top center', showlegend=False,
+                    ))
                 _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
             # ─────────────────────────────────────────────────────────────────
 
@@ -897,6 +938,44 @@ if run_simulation or resume_simulation:
                 height=500, margin=dict(l=0, r=0, b=0, t=0),
                 showlegend=False, plot_bgcolor="#1E1E1E"
             )
+
+            # ── Sprint 2: Social Attention + Occlusion ──────────────────────
+            _scene_objs = _build_scene_objects(current_df, full_df, f_idx, fps=2.5)
+            if _scene_objs:
+                _social = engine.social_attention.compute(_scene_objs)
+                _render_heatmap(_social, heatmap_placeholder)
+
+                _worker = st.session_state.async_worker
+                if _worker is not None:
+                    _fid = _worker.submit(_scene_objs, fps=2.5)
+                    _ade_result = _worker.get_result(_fid, timeout=0.5)
+                else:
+                    _ade_result = engine.predict_scene(_scene_objs, fps=2.5)
+                if _ade_result:
+                    st.session_state.ade_history.append({
+                        'no_social':     _ade_result['ade_no_social'],
+                        'social':        _ade_result['ade_social'],
+                        'fde_no_social': _ade_result.get('fde_no_social', 0.0),
+                        'fde_social':    _ade_result.get('fde_social', 0.0),
+                    })
+                    _render_ade_chart(st.session_state.ade_history, ade_placeholder)
+
+            if show_occlusion and st.session_state.occlusion_handler:
+                visible_ids = [str(r['track_id']) for r in _scene_objs] if _scene_objs else []
+                _ext = st.session_state.occlusion_handler.update(visible_ids, _scene_objs or [])
+                for _vo in _ext:
+                    if not _vo.get('occluded'):
+                        continue
+                    fig_map.add_trace(go.Scatter(
+                        x=[_vo['rel_x']], y=[_vo['rel_y']],
+                        mode='markers+text',
+                        marker=dict(size=14, color='gray', symbol='circle-open',
+                                    opacity=0.5, line=dict(width=2, color='gray')),
+                        text=[f"(가림) ID:{_vo['track_id']}"],
+                        textposition='top center', showlegend=False,
+                    ))
+                _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
+            # ─────────────────────────────────────────────────────────────────
 
             map_placeholder.plotly_chart(fig_map, use_container_width=True, key=f"map_{f_idx}", config={'displayModeBar': False})
             cam_placeholder.plotly_chart(fig_cam, use_container_width=True, key=f"cam_{f_idx}", config={'displayModeBar': False})
