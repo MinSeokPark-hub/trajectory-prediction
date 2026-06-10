@@ -334,13 +334,17 @@ def _build_scene_objects(current_df, full_df, f_idx, scene_name=None, fps=10.0):
         fwd_col = 'pos_y' if 'pos_y' in history.columns else 'pos_z'
         rel_y  = float(obj[fwd_col]) if fwd_col in obj.index else float(obj['depth'])
         vel_y  = float(history[fwd_col].iloc[-1] - history[fwd_col].iloc[-2]) / dt if fwd_col in history.columns else 0.0
+        # LSTM용 3D 이력: [x, forward, depth] — predict_scene()의 history_3d 포맷
+        hist_3d_cols = ['pos_x', fwd_col, 'depth']
+        history_3d = history[hist_3d_cols].values.astype(float) if all(c in history.columns for c in hist_3d_cols) else None
         objects.append({
-            'track_id': str(tid),
-            'rel_x':   float(obj['pos_x']),
-            'rel_y':   rel_y,
-            'vel_x':   vel_x,
-            'vel_y':   vel_y,
-            'depth':   float(obj['depth']),
+            'track_id':   str(tid),
+            'rel_x':      float(obj['pos_x']),
+            'rel_y':      rel_y,
+            'vel_x':      vel_x,
+            'vel_y':      vel_y,
+            'depth':      float(obj['depth']),
+            'history_3d': history_3d,
         })
     return objects
 
