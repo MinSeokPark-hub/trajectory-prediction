@@ -17,6 +17,7 @@ from src.utils.nuscenes_parser import NuScenesParser
 from src.utils.kitti_parser import KittiParser
 from src.inference_engine import InferenceEngine
 from src.utils.occlusion_handler import OcclusionHandler
+from src.utils.async_worker import AsyncPredictionWorker
 
 st.set_page_config(page_title="경로예측 및 충돌예측 연구", layout="wide")
 
@@ -54,6 +55,8 @@ if 'ade_history' not in st.session_state:
     st.session_state.ade_history = []
 if 'occlusion_handler' not in st.session_state:
     st.session_state.occlusion_handler = None
+if 'async_worker' not in st.session_state:
+    st.session_state.async_worker = None
 
 @st.cache_resource
 def init_nuscenes():
@@ -232,6 +235,12 @@ elif dataset_mode == "KITTI":
     engine, full_df, kitti_seq = init_kitti(kitti_seq)
 else:
     engine, full_df = init_sgan()
+
+if run_simulation:
+    if st.session_state.async_worker is not None:
+        st.session_state.async_worker.stop()
+    st.session_state.async_worker = AsyncPredictionWorker(engine.predict_scene, n_workers=2)
+    st.session_state.async_worker.start()
 
 def _live_header(title):
     st.markdown(
@@ -584,12 +593,18 @@ if run_simulation or resume_simulation:
                     _social = engine.social_attention.compute(_scene_objs)
                     _render_heatmap(_social, heatmap_placeholder)
 
-                    _ade_result = engine.predict_scene(_scene_objs, fps=2.0)
-                    st.session_state.ade_history.append({
-                        'no_social': _ade_result['ade_no_social'],
-                        'social':    _ade_result['ade_social'],
-                    })
-                    _render_ade_chart(st.session_state.ade_history, ade_placeholder)
+                    _worker = st.session_state.async_worker
+                    if _worker is not None:
+                        _fid = _worker.submit(_scene_objs, fps=2.0)
+                        _ade_result = _worker.get_result(_fid, timeout=0.5)
+                    else:
+                        _ade_result = engine.predict_scene(_scene_objs, fps=2.0)
+                    if _ade_result:
+                        st.session_state.ade_history.append({
+                            'no_social': _ade_result['ade_no_social'],
+                            'social':    _ade_result['ade_social'],
+                        })
+                        _render_ade_chart(st.session_state.ade_history, ade_placeholder)
 
                 if show_occlusion and st.session_state.occlusion_handler:
                     visible_ids = [str(r['track_id']) for r in _scene_objs]
@@ -727,12 +742,18 @@ if run_simulation or resume_simulation:
                 _social = engine.social_attention.compute(_scene_objs)
                 _render_heatmap(_social, heatmap_placeholder)
 
-                _ade_result = engine.predict_scene(_scene_objs, fps=10.0)
-                st.session_state.ade_history.append({
-                    'no_social': _ade_result['ade_no_social'],
-                    'social':    _ade_result['ade_social'],
-                })
-                _render_ade_chart(st.session_state.ade_history, ade_placeholder)
+                _worker = st.session_state.async_worker
+                if _worker is not None:
+                    _fid = _worker.submit(_scene_objs, fps=10.0)
+                    _ade_result = _worker.get_result(_fid, timeout=0.5)
+                else:
+                    _ade_result = engine.predict_scene(_scene_objs, fps=10.0)
+                if _ade_result:
+                    st.session_state.ade_history.append({
+                        'no_social': _ade_result['ade_no_social'],
+                        'social':    _ade_result['ade_social'],
+                    })
+                    _render_ade_chart(st.session_state.ade_history, ade_placeholder)
 
             if show_occlusion and st.session_state.occlusion_handler:
                 visible_ids = [str(r['track_id']) for r in _scene_objs] if _scene_objs else []
