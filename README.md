@@ -22,8 +22,8 @@ trajectory-prediction/
 │
 ├── src/                        # 고도화 파이프라인 (TTC 예측 기반)
 │   ├── main.py                 # FastAPI 엔드포인트 (Safe-AI API, port 8888)
-│   ├── inference_engine.py     # SimpleTTC + LSTM 통합 추론 엔진
-│   ├── app_ui.py               # Streamlit 실시간 대시보드
+│   ├── inference_engine.py     # SimpleTTC + LSTM + Social Attention 통합 추론 엔진
+│   ├── app_ui.py               # Streamlit 실시간 대시보드 (Sprint 2 기능 포함)
 │   ├── train_lstm.py           # LSTM 모델 학습
 │   ├── train_cnn3d.py          # 3D CNN 모델 학습
 │   ├── train_simple_ttc.py     # SimpleTTC 모델 학습
@@ -34,7 +34,8 @@ trajectory-prediction/
 │   ├── predictors/
 │   │   ├── simple_ttc.py       # SimpleTTC MLP (픽셀 기반 TTC 직접 예측)
 │   │   ├── lstm_predictor.py   # LSTM 3D 궤적 예측 모델
-│   │   └── cnn3d_predictor.py  # 3D CNN 예측 모델
+│   │   ├── cnn3d_predictor.py  # 3D CNN 예측 모델
+│   │   └── social_attention.py # Social Self-Attention 모듈 (Sprint 2)
 │   ├── pipeline/
 │   │   └── queue_pipeline.py   # 비동기 큐 기반 파이프라인
 │   └── utils/
@@ -46,7 +47,11 @@ trajectory-prediction/
 │       ├── kitti_parser.py     # KITTI 데이터셋 파서
 │       ├── sgan_parser.py      # ETH/UCY 데이터셋 파서
 │       ├── nuscenes_parser.py  # nuScenes 데이터셋 파서
-│       └── physics_engine.py   # 벡터 기반 TTC 물리 계산
+│       ├── physics_engine.py   # 벡터 기반 TTC 물리 계산
+│       ├── occlusion_handler.py    # Occlusion 대응 관성 예측 모듈 (Sprint 2)
+│       ├── async_worker.py         # 비동기 예측 워커 (Sprint 2)
+│       ├── validate_occlusion.py   # T12 Occlusion 전/후 예측 적중률 검증
+│       └── validate_performance.py # T15/T18 레이턴시·FPS 성능 검증
 │
 ├── models/                     # 학습된 모델 및 스케일러 파일
 ├── Dockerfile
@@ -81,6 +86,25 @@ graph TD
     L --> M[🔴 Danger\nTTC ≤ 1.5s]
     L --> N[🟡 Warning\nTTC ≤ 3.0s]
     L --> O[🟢 Safe\nTTC > 3.0s]
+```
+
+### Sprint 2 확장 파이프라인
+
+```mermaid
+graph TD
+    A[프레임 객체 목록] --> B[Social Self-Attention\n거리·상대속도 기반\n상호작용 행렬 N×N]
+    B --> C[위험도 가중치\nattention_weights]
+    B --> D[회피 기동 감지\nevasion_flags]
+    C --> E[위험 등급 분류\nhigh / mid / low]
+
+    A --> F[OcclusionHandler\n관성 외삽 위치 유지]
+    F --> G[가상 객체 포함\n확장 객체 목록]
+    G --> H[맵 circle-open 마커]
+
+    A --> I[AsyncPredictionWorker\n2 워커 스레드 병렬]
+    I --> J[predict_scene\nLSTM T+1초 예측]
+    J --> K[ADE/FDE 비교\n미적용 vs 적용]
+    K --> L[실시간 차트\n4선 시각화]
 ```
 
 ### 1. 3D CNN + Attention 모델 (app/)
@@ -125,6 +149,57 @@ graph TD
 | ≤ 1.5초 | 🔴 **Danger** |
 | 1.5 ~ 3.0초 | 🟡 **Warning** |
 | > 3.0초 | 🟢 **Safe** |
+
+---
+
+## Sprint 2 기능 (Social Attention · Occlusion · 비동기 엔진)
+
+### Social Self-Attention 모듈 (`predictors/social_attention.py`)
+
+다중 객체 간 상호작용을 물리 기반으로 모델링합니다.
+
+| 기능 | 설명 |
+|------|------|
+| 위험도 점수 | 자차 기준 거리 역수 + 접근 속도로 위험 점수 산출 |
+| 어텐션 가중치 | Softmax 정규화 → 객체별 위험 가중치 |
+| 상호작용 행렬 | N×N 행렬 — 거리·상대속도 기반, 행별 정규화 |
+| 회피 기동 감지 | 횡방향 속도 비율 > 20% + 인접 객체 영향력 > 35% |
+| 위험 등급 | `high` / `mid` / `low` 3단계 분류 |
+
+### Occlusion Handler (`utils/occlusion_handler.py`)
+
+객체가 프레임에서 사라질 때 등속 운동 가정으로 위치를 유지합니다.
+
+| 기능 | 설명 |
+|------|------|
+| 관성 외삽 | 마지막 속도 벡터로 매 프레임 위치 추정 |
+| 최대 유지 | 기본 10프레임까지 가상 객체 유지 후 삭제 |
+| 재등장 오차 | 재등장 시 예측 위치와 실제 위치의 오차 반환 |
+| 맵 시각화 | 가림 중인 객체를 `circle-open` 반투명 마커로 표시 |
+
+**T12 검증 결과** (`validate_occlusion.py`, 500 시나리오)
+
+| 지표 | 베이스라인 (정지 가정) | OcclusionHandler | 개선율 |
+|------|---------------------|-----------------|--------|
+| 위치 오차 MAE | 1.758 m | 0.287 m | **+83.7%** |
+| 위험 지점 예측 적중률 | 86.0% | 98.2% | **+12.2%** ✅ |
+
+### 비동기 예측 워커 (`utils/async_worker.py`)
+
+`AsyncPredictionWorker`는 2개의 워커 스레드로 `predict_scene()`을 병렬 처리합니다.
+
+| 기능 | 설명 |
+|------|------|
+| 비동기 제출 | `submit(objects, fps)` → frame_id 즉시 반환 |
+| 순서 보장 | frame_id별 독립 큐로 결과 순서 일치 보장 |
+| FPS 측정 | `fps_stats()` — 처리 프레임 수 / 경과 시간 |
+
+**T15/T18 검증 결과** (`validate_performance.py`, 120 프레임)
+
+| 태스크 | 지표 | 결과 | 기준 |
+|--------|------|------|------|
+| T15 | P95 end-to-end 레이턴시 | **15.34 ms** | ≤ 50 ms ✅ |
+| T18 | 실효 처리 FPS | **133.2 FPS** | ≥ 30 FPS ✅ |
 
 ---
 
@@ -193,13 +268,21 @@ graph TD
 
 실시간 시뮬레이션 UI로 GPS Map View + Camera View를 동시에 표시합니다.
 
-**주요 기능**
+### 기본 기능
 - 데이터셋 선택: nuScenes / ETH·UCY / KITTI
 - TTC 임계값 슬라이더 실시간 조정
 - Frame Skip / Frame Delay 속도 제어
 - ▶️ 시작 / ⏹️ 정지 / ⏩ 재개 시뮬레이션 제어
 - 하단 위험 등급별 객체 수 및 TTC 카드 (Danger / Warning / Safe)
 - KST 기준 위험 감지 로그 기록
+
+### Sprint 2 기능 (사이드바에서 ON/OFF)
+
+| 기능 | 설명 |
+|------|------|
+| 🔥 어텐션 히트맵 | 객체별 위험 가중치를 버블+바 차트로 표시. 회피 기동 객체는 ⚠️ 표시 |
+| 📊 ADE/FDE 비교 | Social Attention 미적용/적용 ADE·FDE 4선 차트 및 개선율 실시간 표시 |
+| 👁️ Occlusion 추적 | 가림 객체 수·ID 배너 + 맵에 `circle-open` 반투명 마커로 가상 위치 표시 |
 
 ```bash
 streamlit run src/app_ui.py --server.port 8501 --server.address 0.0.0.0
@@ -258,6 +341,15 @@ uvicorn src.main:app --host 0.0.0.0 --port 8888
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+### 검증 스크립트 실행
+```bash
+# T12: Occlusion 전/후 예측 적중률 비교
+python src/utils/validate_occlusion.py
+
+# T15/T18: 레이턴시 및 FPS 성능 검증
+python src/utils/validate_performance.py
+```
+
 ### Docker 실행
 ```bash
 docker build -t trajectory-api .
@@ -281,3 +373,15 @@ docker-compose up --build
 | 데이터 처리 | NumPy, Pandas, scikit-learn, OpenCV |
 | 이미지 처리 | Pillow, pyquaternion |
 | 배포 | Docker, docker-compose |
+
+---
+
+## 팀
+
+| 학번 | 이름 | 역할 |
+|------|------|------|
+| 202201277 | 조우연 | T5·T8·T12·T14·T17 |
+| 202003463 | 박민석 | T4·T7·T11·T13·T16 (PO) |
+| 202300892 | 허민경 | T6·T6-1·T9·T10·T15·T18 |
+
+지도교수: 이규철 교수님
