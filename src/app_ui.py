@@ -139,6 +139,16 @@ def get_color(ttc, ttc_threshold, warning_threshold):
         return (255, 165, 0), "orange", "Warning"
     return (0, 200, 0), "green", "Safe"
 
+def compute_risk_score(ttc):
+    return float(np.clip((10.0 - ttc) / 10.0, 0.0, 1.0))
+
+def get_risk_level(risk_score):
+    if risk_score >= 0.7:
+        return 'High'
+    elif risk_score >= 0.4:
+        return 'Medium'
+    return 'Low'
+
 def project_to_image(nusc, sample_token, obj_translation, obj_size, obj_rotation):
     try:
         sample    = nusc.get('sample', sample_token)
@@ -456,6 +466,37 @@ def _render_occlusion_info(occlusion_handler, placeholder):
         unsafe_allow_html=True,
     )
 
+def _render_risk_heatmap(risk_rows, placeholder):
+    """위험도 히트맵: 객체 위치 × 위험도를 Reds 색상으로 시각화"""
+    if placeholder is None or not risk_rows:
+        return
+    depths = [float(r['Depth(m)']) for r in risk_rows]
+    scores = [float(r['Risk Score']) for r in risk_rows]
+    ids    = [r['ID'] for r in risk_rows]
+    levels = [r['Level'] for r in risk_rows]
+    fig = go.Figure(go.Scatter(
+        x=list(range(len(risk_rows))),
+        y=depths,
+        mode='markers+text',
+        marker=dict(
+            size=[max(10, int(s * 40)) for s in scores],
+            color=scores, colorscale='Reds', showscale=True,
+            colorbar=dict(title='Risk', thickness=12),
+            cmin=0, cmax=1, line=dict(width=1, color='white'),
+        ),
+        text=[f"ID:{i}<br>{lv}" for i, lv in zip(ids, levels)],
+        textposition='top center',
+    ))
+    fig.update_layout(
+        xaxis=dict(tickvals=list(range(len(risk_rows))),
+                   ticktext=[str(r['ID']) for r in risk_rows], title="객체 ID"),
+        yaxis=dict(title="Depth (m)"),
+        height=300, margin=dict(l=10, r=10, t=10, b=40),
+        plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
+        font=dict(color='white'),
+    )
+    placeholder.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
 st.markdown("---")
 if show_heatmap or show_ade:
     _sp2_left, _sp2_right = st.columns(2)
@@ -480,6 +521,21 @@ else:
     heatmap_placeholder = None
     ade_placeholder = None
     occlusion_info_placeholder = None
+
+if dataset_mode == "nuScenes":
+    _risk_left, _risk_right = st.columns(2)
+    with _risk_left:
+        _live_header("🎯 위험도 분석 테이블")
+        risk_table_placeholder = st.empty()
+    with _risk_right:
+        _live_header("🗺️ 위험도 히트맵")
+        risk_heatmap_placeholder = st.empty()
+    perf_placeholder = st.empty()
+    st.markdown("---")
+else:
+    risk_table_placeholder = None
+    risk_heatmap_placeholder = None
+    perf_placeholder = None
 
 st.subheader("📋 위험 감지 로그")
 log_placeholder = st.empty()
@@ -523,6 +579,8 @@ if run_simulation or resume_simulation:
                     continue
 
                 current_df   = current_df.nsmallest(10, 'depth')
+                t_frame_start = time.perf_counter()
+                risk_rows    = []
                 fig_map      = go.Figure()
                 danger_objs  = []
                 warning_objs = []
@@ -557,6 +615,8 @@ if run_simulation or resume_simulation:
                     vel   = float(obj['velocity']) if pd.notna(obj.get('velocity')) else 0.0
                     ttc   = depth / vel if vel > 0.1 else 10.0
                     ttc   = float(min(max(ttc, 0.1), 10.0))
+                    risk_score = compute_risk_score(ttc)
+                    risk_level = get_risk_level(risk_score)
 
                     color_rgb, color_str, status = get_color(ttc, ttc_threshold, warning_threshold)
                     if status == "Danger":
@@ -566,12 +626,21 @@ if run_simulation or resume_simulation:
                     else:
                         safe_count += 1
 
+                    risk_rows.append({
+                        'ID':         tid,
+                        'Type':       obj['type'],
+                        'TTC(s)':     round(ttc, 2),
+                        'Risk Score': round(risk_score, 3),
+                        'Level':      risk_level,
+                        'Depth(m)':   round(depth, 1),
+                    })
+
                     fig_map.add_trace(go.Scatter(
                         x=[rel_x], y=[rel_y],
                         mode='markers+text',
-                        marker=dict(size=12, color=color_str,
-                                    line=dict(width=1, color='black')),
-                        text=[f"{obj['type']}<br>{ttc:.1f}s"],
+                        marker=dict(size=max(12, int(risk_score * 30)),
+                                    color=color_str, line=dict(width=1, color='black')),
+                        text=[f"{obj['type']}<br>TTC:{ttc:.1f}s<br>{risk_level}({risk_score:.2f})"],
                         textposition="top center", name=status
                     ))
                     fig_map.add_trace(go.Scatter(
@@ -643,6 +712,25 @@ if run_simulation or resume_simulation:
                         ))
                     _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
                 # ───────────────────────────────────────────────────────────
+
+                # Risk table + heatmap + perf card
+                if risk_rows:
+                    _render_risk_heatmap(risk_rows, risk_heatmap_placeholder)
+                    _risk_df = pd.DataFrame(risk_rows).sort_values('Risk Score', ascending=False)
+                    if risk_table_placeholder is not None:
+                        risk_table_placeholder.dataframe(_risk_df, use_container_width=True, hide_index=True)
+                t_frame_end = time.perf_counter()
+                if perf_placeholder is not None:
+                    _ms  = (t_frame_end - t_frame_start) * 1000
+                    _fps = 1000.0 / max(_ms, 1)
+                    perf_placeholder.markdown(
+                        f'<div style="background:#1e293b;border-radius:8px;padding:8px 14px;'
+                        f'font-size:13px;color:#94a3b8">'
+                        f'⚡ <b>처리 성능</b> &nbsp;|&nbsp; 응답 시간: '
+                        f'<b style="color:#22d3ee">{_ms:.1f} ms</b>'
+                        f' &nbsp;|&nbsp; FPS: <b style="color:#4ade80">{_fps:.1f}</b></div>',
+                        unsafe_allow_html=True
+                    )
 
                 if gps_fixed:
                     fig_map.update_layout(
