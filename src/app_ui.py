@@ -579,7 +579,6 @@ if run_simulation or resume_simulation:
                     continue
 
                 current_df   = current_df.nsmallest(10, 'depth')
-                t_frame_start = time.perf_counter()
                 risk_rows    = []
                 fig_map      = go.Figure()
                 danger_objs  = []
@@ -677,16 +676,19 @@ if run_simulation or resume_simulation:
                 _scene_objs = _build_scene_objects(
                     current_df, full_df, f_idx, scene_name=scene_name, fps=2.0
                 )
+                _pred_ms = 0.0
                 if _scene_objs:
                     _social = engine.social_attention.compute(_scene_objs)
                     _render_heatmap(_social, heatmap_placeholder)
 
                     _worker = st.session_state.async_worker
+                    _t_pred = time.perf_counter()
                     if _worker is not None:
                         _fid = _worker.submit(_scene_objs, fps=2.0)
                         _ade_result = _worker.get_result(_fid, timeout=0.5)
                     else:
                         _ade_result = engine.predict_scene(_scene_objs, fps=2.0)
+                    _pred_ms = (time.perf_counter() - _t_pred) * 1000
                     if _ade_result:
                         st.session_state.ade_history.append({
                             'no_social':     _ade_result['ade_no_social'],
@@ -719,16 +721,16 @@ if run_simulation or resume_simulation:
                     _risk_df = pd.DataFrame(risk_rows).sort_values('Risk Score', ascending=False)
                     if risk_table_placeholder is not None:
                         risk_table_placeholder.dataframe(_risk_df, use_container_width=True, hide_index=True)
-                t_frame_end = time.perf_counter()
                 if perf_placeholder is not None:
-                    _ms  = (t_frame_end - t_frame_start) * 1000
-                    _fps = 1000.0 / max(_ms, 1)
+                    _fps = 1000.0 / max(_pred_ms, 1)
                     perf_placeholder.markdown(
                         f'<div style="background:#1e293b;border-radius:8px;padding:8px 14px;'
                         f'font-size:13px;color:#94a3b8">'
-                        f'⚡ <b>처리 성능</b> &nbsp;|&nbsp; 응답 시간: '
-                        f'<b style="color:#22d3ee">{_ms:.1f} ms</b>'
-                        f' &nbsp;|&nbsp; FPS: <b style="color:#4ade80">{_fps:.1f}</b></div>',
+                        f'⚡ <b>추론 성능</b> &nbsp;|&nbsp; 예측 응답: '
+                        f'<b style="color:#22d3ee">{_pred_ms:.1f} ms</b>'
+                        f' &nbsp;|&nbsp; 추론 FPS: <b style="color:#4ade80">{_fps:.1f}</b>'
+                        f' &nbsp;|&nbsp; <span style="color:#64748b;font-size:11px">'
+                        f'(렌더링 제외 순수 ML 추론)</span></div>',
                         unsafe_allow_html=True
                     )
 
