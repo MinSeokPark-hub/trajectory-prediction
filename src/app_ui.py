@@ -258,21 +258,35 @@ def _live_header(title):
         unsafe_allow_html=True
     )
 
-_map_label = "🗺️ GPS Map View" if dataset_mode == "nuScenes" else "📡 Bird's Eye View"
-_cam_label = {"nuScenes": "📷 CAM_FRONT", "KITTI": "📷 KITTI Camera"}.get(dataset_mode, "📷 Camera View")
+if dataset_mode == "nuScenes":
+    col_map, col_cam = st.columns(2)
+    with col_map:
+        _live_header("🗺️ GPS Map View (자차 중심)")
+        map_placeholder = st.empty()
+    with col_cam:
+        _live_header("📷 Camera View (CAM_FRONT)")
+        cam_placeholder = st.empty()
+        cam_meta_placeholder = st.empty()
+elif dataset_mode == "KITTI":
+    col_radar, col_cam = st.columns(2)
+    with col_radar:
+        _live_header("📡 Bird's Eye View (KITTI)")
+        map_placeholder = st.empty()
+    with col_cam:
+        _live_header("📷 Camera View (KITTI)")
+        cam_placeholder = st.empty()
+        cam_meta_placeholder = st.empty()
+else:
+    col_radar, col_cam = st.columns(2)
+    with col_radar:
+        _live_header("📡 Bird's Eye View (Radar)")
+        map_placeholder = st.empty()
+    with col_cam:
+        _live_header("📷 Camera View")
+        cam_placeholder = st.empty()
+        cam_meta_placeholder = st.empty()
 
-col_map, col_cam, col_heat = st.columns(3)
-with col_map:
-    _live_header(_map_label)
-    map_placeholder = st.empty()
-with col_cam:
-    _live_header(_cam_label)
-    cam_placeholder = st.empty()
-    cam_meta_placeholder = st.empty()
-with col_heat:
-    _live_header("🔥 어텐션 가중치")
-    heatmap_placeholder = st.empty() if show_heatmap else None
-
+st.markdown("---")
 _cd, _cw, _cs = st.columns(3)
 with _cd:
     danger_ph = st.empty()
@@ -379,7 +393,7 @@ def _render_heatmap(social_result, placeholder):
         xaxis=dict(tickvals=list(range(len(tids))),
                    ticktext=[f"ID:{t}" for t in tids], title="객체"),
         yaxis=dict(title="어텐션 가중치", range=[0, max(weights.tolist() + [0.1]) * 1.4]),
-        height=450, margin=dict(l=10, r=10, t=10, b=40),
+        height=300, margin=dict(l=10, r=10, t=10, b=40),
         plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
         font=dict(color='white'),
     )
@@ -483,31 +497,48 @@ def _render_risk_heatmap(risk_rows, placeholder):
     )
     placeholder.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-col_ade, col_risk, col_misc = st.columns(3)
-with col_ade:
-    _live_header("📊 ADE/FDE 비교")
-    ade_placeholder = st.empty() if show_ade else None
-with col_risk:
-    if dataset_mode == "nuScenes":
-        _live_header("🎯 위험도 테이블")
-        risk_table_placeholder = st.empty()
+st.markdown("---")
+if show_heatmap or show_ade:
+    _sp2_left, _sp2_right = st.columns(2)
+    if show_heatmap:
+        with _sp2_left:
+            _live_header("🔥 어텐션 가중치 히트맵")
+            heatmap_placeholder = st.empty()
     else:
-        risk_table_placeholder = None
+        heatmap_placeholder = None
+    if show_ade:
+        with _sp2_right:
+            _live_header("📊 ADE/FDE 비교 (Social Attention 전/후)")
+            ade_placeholder = st.empty()
+    else:
+        ade_placeholder = None
     if show_occlusion:
         occlusion_info_placeholder = st.empty()
     else:
         occlusion_info_placeholder = None
-with col_misc:
-    if dataset_mode == "nuScenes":
-        _live_header("⚡ 추론 성능")
-        perf_placeholder = st.empty()
-    else:
-        perf_placeholder = None
+    st.markdown("---")
+else:
+    heatmap_placeholder = None
+    ade_placeholder = None
+    occlusion_info_placeholder = None
 
-risk_heatmap_placeholder = None
+if dataset_mode == "nuScenes":
+    _risk_left, _risk_right = st.columns(2)
+    with _risk_left:
+        _live_header("🎯 위험도 분석 테이블")
+        risk_table_placeholder = st.empty()
+    with _risk_right:
+        _live_header("🗺️ 위험도 히트맵")
+        risk_heatmap_placeholder = st.empty()
+    perf_placeholder = st.empty()
+    st.markdown("---")
+else:
+    risk_table_placeholder = None
+    risk_heatmap_placeholder = None
+    perf_placeholder = None
 
-with st.expander("📋 위험 감지 로그", expanded=False):
-    log_placeholder = st.empty()
+st.subheader("📋 위험 감지 로그")
+log_placeholder = st.empty()
 
 if 'detection_logs' not in st.session_state:
     st.session_state.detection_logs = []
