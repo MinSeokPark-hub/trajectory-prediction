@@ -57,6 +57,8 @@ if 'occlusion_handler' not in st.session_state:
     st.session_state.occlusion_handler = None
 if 'async_worker' not in st.session_state:
     st.session_state.async_worker = None
+if 'short_id_map' not in st.session_state:
+    st.session_state.short_id_map = {}
 
 @st.cache_resource
 def init_nuscenes():
@@ -251,6 +253,27 @@ if run_simulation:
         st.session_state.async_worker.stop()
     st.session_state.async_worker = AsyncPredictionWorker(engine.predict_scene, n_workers=2)
     st.session_state.async_worker.start()
+    st.session_state.short_id_map = _build_short_id_map(full_df)
+
+_TYPE_PREFIX = {
+    'Pedestrian': 'P',
+    'Cyclist':    'B',
+    'Car':        'C',
+    'Van':        'C',
+    'Truck':      'C',
+    'Vehicle':    'C',
+}
+
+def _build_short_id_map(df):
+    counters, result = {}, {}
+    for _, row in df[['track_id', 'type']].drop_duplicates('track_id').sort_values('track_id').iterrows():
+        p = _TYPE_PREFIX.get(row['type'], 'X')
+        counters[p] = counters.get(p, 0) + 1
+        result[str(row['track_id'])] = f"{p}{counters[p]}"
+    return result
+
+def _sid(tid):
+    return st.session_state.short_id_map.get(str(tid), str(tid))
 
 def _live_header(title):
     st.markdown(
@@ -371,7 +394,7 @@ def _render_heatmap(social_result, placeholder):
     for i, tid in enumerate(tids):
         w     = float(weights[i])
         color = _RISK_COLOR.get(risk_lvl[i], '#6b7280')
-        label = f"ID:{tid}<br>w={w:.3f}<br>{risk_lvl[i].upper()}"
+        label = f"{_sid(tid)}<br>w={w:.3f}<br>{risk_lvl[i].upper()}"
         if evasion[i]:
             label += "<br>⚠️회피"
         fig.add_trace(go.Scatter(
@@ -380,7 +403,7 @@ def _render_heatmap(social_result, placeholder):
             marker=dict(size=max(20, int(w * 300)), color=color, opacity=0.8,
                         line=dict(width=2, color='white')),
             text=[label], textposition='top center',
-            name=tid, showlegend=False,
+            name=_sid(tid), showlegend=False,
         ))
 
     fig.add_trace(go.Bar(
@@ -391,7 +414,7 @@ def _render_heatmap(social_result, placeholder):
     ))
     fig.update_layout(
         xaxis=dict(tickvals=list(range(len(tids))),
-                   ticktext=[f"ID:{t}" for t in tids], title="객체"),
+                   ticktext=[_sid(t) for t in tids], title="객체"),
         yaxis=dict(title="어텐션 가중치", range=[0, max(weights.tolist() + [0.1]) * 1.4]),
         height=300, margin=dict(l=10, r=10, t=10, b=40),
         plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
@@ -457,7 +480,7 @@ def _render_occlusion_info(occlusion_handler, placeholder):
     occ_ids = stats['occluded_ids']
     color = "#fef9c3" if occ_ids else "#dcfce7"
     text_color = "#92400e" if occ_ids else "#166534"
-    ids_str = ", ".join(str(i) for i in occ_ids) if occ_ids else "없음"
+    ids_str = ", ".join(_sid(i) for i in occ_ids) if occ_ids else "없음"
     placeholder.markdown(
         f'<div style="background:{color};border-radius:8px;padding:8px 14px;'
         f'font-size:13px;color:{text_color}">'
@@ -484,7 +507,7 @@ def _render_risk_heatmap(risk_rows, placeholder):
             colorbar=dict(title='Risk', thickness=12),
             cmin=0, cmax=1, line=dict(width=1, color='white'),
         ),
-        text=[f"ID:{i}<br>{lv}" for i, lv in zip(ids, levels)],
+        text=[f"{i}<br>{lv}" for i, lv in zip(ids, levels)],
         textposition='top center',
     ))
     fig.update_layout(
@@ -626,7 +649,7 @@ if run_simulation or resume_simulation:
                         safe_count += 1
 
                     risk_rows.append({
-                        'ID':         tid,
+                        'ID':         _sid(tid),
                         'Type':       obj['type'],
                         'TTC(s)':     round(ttc, 2),
                         'Risk Score': round(risk_score, 3),
@@ -639,7 +662,7 @@ if run_simulation or resume_simulation:
                         mode='markers+text',
                         marker=dict(size=max(12, int(risk_score * 30)),
                                     color=color_str, line=dict(width=1, color='black')),
-                        text=[f"{obj['type']}<br>TTC:{ttc:.1f}s<br>{risk_level}({risk_score:.2f})"],
+                        text=[f"{_sid(tid)}<br>{ttc:.1f}s"],
                         textposition="top center", name=status
                     ))
                     fig_map.add_trace(go.Scatter(
@@ -669,7 +692,7 @@ if run_simulation or resume_simulation:
                         result = project_to_image(nusc, sample_token, obj_translation, obj_size, obj_rotation)
                         if result:
                             x1, y1, x2, y2 = result
-                            label = f"{obj['type']} {ttc:.1f}s"
+                            label = f"{_sid(tid)} {ttc:.1f}s"
                             boxes_to_draw.append((x1, y1, x2, y2, label, color_rgb))
 
                 # ── Sprint 2: Social Attention + Occlusion ──────────────────
@@ -709,7 +732,7 @@ if run_simulation or resume_simulation:
                             mode='markers+text',
                             marker=dict(size=14, color='gray', symbol='circle-open',
                                         opacity=0.5, line=dict(width=2, color='gray')),
-                            text=[f"(가림) ID:{_vo['track_id']}"],
+                            text=[f"(가림) {_sid(_vo['track_id'])}"],
                             textposition='top center', showlegend=False,
                         ))
                     _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
@@ -836,7 +859,7 @@ if run_simulation or resume_simulation:
                     x=[float(obj['pos_x'])], y=[float(obj['pos_z'])],
                     mode='markers+text',
                     marker=dict(size=15, color=color_str, line=dict(width=2, color='black')),
-                    text=[f"{obj['type']}<br>{ttc:.1f}s"], textposition="top center", name=status
+                    text=[f"{_sid(tid)}<br>{ttc:.1f}s"], textposition="top center", name=status
                 ))
                 fig_map.add_trace(go.Scatter(
                     x=history['pos_x'].values, y=history['pos_z'].values,
@@ -848,7 +871,7 @@ if run_simulation or resume_simulation:
                 y1 = int(obj['y_pix'] - obj['h_pix'] / 2)
                 x2 = int(obj['x_pix'] + obj['w_pix'] / 2)
                 y2 = int(obj['y_pix'] + obj['h_pix'] / 2)
-                label = f"{obj['type']} {ttc:.1f}s"
+                label = f"{_sid(tid)} {ttc:.1f}s"
                 boxes_to_draw.append((x1, y1, x2, y2, label, color_rgb))
 
             fig_map.add_trace(go.Scatter(
@@ -890,7 +913,7 @@ if run_simulation or resume_simulation:
                         mode='markers+text',
                         marker=dict(size=14, color='gray', symbol='circle-open',
                                     opacity=0.5, line=dict(width=2, color='gray')),
-                        text=[f"(가림) ID:{_vo['track_id']}"],
+                        text=[f"(가림) {_sid(_vo['track_id'])}"],
                         textposition='top center', showlegend=False,
                     ))
                 _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
@@ -994,7 +1017,7 @@ if run_simulation or resume_simulation:
                     mode='markers+text',
                     marker=dict(size=15, color=color_str,
                                 line=dict(width=2, color='black')),
-                    text=[f"ID:{tid}"], textposition="top center", name=status
+                    text=[f"{_sid(tid)}"], textposition="top center", name=status
                 ))
                 fig_map.add_trace(go.Scatter(
                     x=history['pos_x'], y=history['pos_z'],
@@ -1013,7 +1036,7 @@ if run_simulation or resume_simulation:
                 )
                 fig_cam.add_trace(go.Scatter(
                     x=[pseudo_x], y=[pseudo_y+35],
-                    mode='text', text=[f"ID:{tid} | {ttc:.1f}s"],
+                    mode='text', text=[f"{_sid(tid)} | {ttc:.1f}s"],
                     textfont=dict(color=color_str, size=14), showlegend=False
                 ))
 
@@ -1061,7 +1084,7 @@ if run_simulation or resume_simulation:
                         mode='markers+text',
                         marker=dict(size=14, color='gray', symbol='circle-open',
                                     opacity=0.5, line=dict(width=2, color='gray')),
-                        text=[f"(가림) ID:{_vo['track_id']}"],
+                        text=[f"(가림) {_sid(_vo['track_id'])}"],
                         textposition='top center', showlegend=False,
                     ))
                 _render_occlusion_info(st.session_state.occlusion_handler, occlusion_info_placeholder)
