@@ -162,32 +162,32 @@ class InferenceEngine:
     def _compute_ade_comparison(self, objects, predictions, fps):
         """
         Social Attention 미적용(균등 가중치) vs 적용 ADE/FDE 근사 비교 (T14)
-        실제 미래 위치가 없으므로 예측 분산을 오차 대리 지표로 사용.
-        ADE: 전체 스텝 평균 변위 / FDE: 마지막 스텝 변위
+        ground truth 없이 현재 속도 기반 프레임당 이동량(m)을 대리 지표로 사용.
+        ADE: 프레임당 이동량 / FDE: T+1초 후 예상 이동량
         """
-        if not predictions:
+        if not predictions or not objects:
             return 0.0, 0.0, 0.0, 0.0
 
+        dt = 1.0 / fps
+        t1_s = max(1, round(fps)) * dt  # T+1초
         uniform_weight = 1.0 / max(len(objects), 1)
         ade_no_s, ade_s, fde_no_s, fde_s = [], [], [], []
 
-        for pred in predictions:
-            if pred['pred_traj'] is None:
-                continue
-            traj = np.array(pred['pred_traj'])
-            displacements = np.linalg.norm(np.diff(traj[:, :2], axis=0), axis=1)
-            if len(displacements) == 0:
-                continue
+        for obj, pred in zip(objects, predictions):
+            vx = float(obj.get('vel_x', 0.0))
+            vy = float(obj.get('vel_y', 0.0))
+            speed = float(np.sqrt(vx ** 2 + vy ** 2))
 
-            mean_disp  = displacements.mean()
-            final_disp = displacements[-1]
+            step_disp  = speed * dt        # 프레임당 이동량 (m) — ADE 대리값
+            final_disp = speed * t1_s      # T+1초 후 이동량 (m) — FDE 대리값
+
             w = pred['attention_weight']
             n = len(objects)
 
-            ade_no_s.append(mean_disp  * uniform_weight * n)
-            ade_s.append(mean_disp     * w              * n)
+            ade_no_s.append(step_disp  * uniform_weight * n)
+            ade_s.append(step_disp     * w * n)
             fde_no_s.append(final_disp * uniform_weight * n)
-            fde_s.append(final_disp    * w              * n)
+            fde_s.append(final_disp    * w * n)
 
         def _mean(lst): return float(np.mean(lst)) if lst else 0.0
         return _mean(ade_no_s), _mean(ade_s), _mean(fde_no_s), _mean(fde_s)
