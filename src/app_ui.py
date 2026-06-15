@@ -41,6 +41,9 @@ section[data-testid="stSidebar"] .stButton button {
 section[data-testid="stSidebar"] .stButton button:hover {
     background-color: #1d4ed8;
 }
+[data-testid="stMetric"] label,
+[data-testid="stMetric"] [data-testid="stMetricValue"],
+[data-testid="stMetric"] [data-testid="stMetricDelta"] { color: #ffffff !important; }
 </style>
 """, unsafe_allow_html=True)
 
