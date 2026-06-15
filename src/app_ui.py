@@ -382,7 +382,7 @@ def _build_scene_objects(current_df, full_df, f_idx, scene_name=None, fps=10.0):
     return objects
 
 def _render_heatmap(social_result, placeholder):
-    """US-09 T6-1: 어텐션 가중치 히트맵"""
+    """US-09 T6-1: 어텐션 가중치 히트맵 — 수평 바 차트"""
     if placeholder is None or not social_result.get('track_ids'):
         return
     weights  = social_result['attention_weights']
@@ -390,33 +390,37 @@ def _render_heatmap(social_result, placeholder):
     tids     = social_result['track_ids']
     evasion  = social_result['evasion_flags']
 
-    fig = go.Figure()
+    labels = []
     for i, tid in enumerate(tids):
-        w     = float(weights[i])
-        color = _RISK_COLOR.get(risk_lvl[i], '#6b7280')
-        label = f"{_sid(tid)}<br>w={w:.3f}<br>{risk_lvl[i].upper()}"
-        if evasion[i]:
-            label += "<br>⚠️회피"
-        fig.add_trace(go.Scatter(
-            x=[i], y=[w],
-            mode='markers+text',
-            marker=dict(size=max(20, int(w * 300)), color=color, opacity=0.8,
-                        line=dict(width=2, color='white')),
-            text=[label], textposition='top center',
-            name=_sid(tid), showlegend=False,
-        ))
+        tag = " ⚠️" if evasion[i] else ""
+        labels.append(f"{_sid(tid)}{tag}")
 
-    fig.add_trace(go.Bar(
-        x=list(range(len(tids))),
-        y=weights.tolist(),
-        marker_color=[_RISK_COLOR.get(r, '#6b7280') for r in risk_lvl],
-        opacity=0.35, showlegend=False,
+    colors = [_RISK_COLOR.get(r, '#6b7280') for r in risk_lvl]
+    vals   = [float(w) for w in weights]
+
+    # 위험도 높은 순 정렬
+    order  = sorted(range(len(vals)), key=lambda i: vals[i])
+    s_labels = [labels[i] for i in order]
+    s_vals   = [vals[i]   for i in order]
+    s_colors = [colors[i] for i in order]
+    s_risk   = [risk_lvl[i] for i in order]
+
+    fig = go.Figure(go.Bar(
+        x=s_vals, y=s_labels,
+        orientation='h',
+        marker=dict(color=s_colors, line=dict(width=0)),
+        text=[f"{v:.3f}  {r.upper()}" for v, r in zip(s_vals, s_risk)],
+        textposition='outside',
+        textfont=dict(size=12, color='white'),
+        cliponaxis=False,
     ))
     fig.update_layout(
-        xaxis=dict(tickvals=list(range(len(tids))),
-                   ticktext=[_sid(t) for t in tids], title="객체"),
-        yaxis=dict(title="어텐션 가중치", range=[0, max(weights.tolist() + [0.1]) * 1.4]),
-        height=300, margin=dict(l=10, r=10, t=10, b=40),
+        xaxis=dict(range=[0, max(s_vals + [0.1]) * 1.45],
+                   showgrid=True, gridcolor='rgba(255,255,255,0.1)',
+                   title="어텐션 가중치", tickfont=dict(size=11)),
+        yaxis=dict(tickfont=dict(size=13, color='white')),
+        height=max(200, len(tids) * 46),
+        margin=dict(l=10, r=60, t=10, b=30),
         plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
         font=dict(color='white'),
     )
@@ -432,41 +436,45 @@ def _render_ade_chart(ade_history, placeholder):
     fde_no  = [h.get('fde_no_social', 0) for h in ade_history]
     fde_yes = [h.get('fde_social', 0)    for h in ade_history]
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=frames, y=ade_no, mode='lines', name='ADE 미적용',
-        line=dict(color='#94a3b8', width=2, dash='dot'),
-    ))
-    fig.add_trace(go.Scatter(
-        x=frames, y=ade_yes, mode='lines+markers', name='ADE 적용',
-        line=dict(color='#22d3ee', width=2),
-        marker=dict(size=4),
-    ))
-    fig.add_trace(go.Scatter(
-        x=frames, y=fde_no, mode='lines', name='FDE 미적용',
-        line=dict(color='#f97316', width=2, dash='dot'),
-    ))
-    fig.add_trace(go.Scatter(
-        x=frames, y=fde_yes, mode='lines+markers', name='FDE 적용',
-        line=dict(color='#a78bfa', width=2),
-        marker=dict(size=4),
-    ))
     avg_ade_no  = float(np.mean(ade_no))  if ade_no  else 0
     avg_ade_yes = float(np.mean(ade_yes)) if ade_yes else 0
     avg_fde_no  = float(np.mean(fde_no))  if fde_no  else 0
     avg_fde_yes = float(np.mean(fde_yes)) if fde_yes else 0
     ade_imp = (avg_ade_no - avg_ade_yes) / (avg_ade_no + 1e-9) * 100
     fde_imp = (avg_fde_no - avg_fde_yes) / (avg_fde_no + 1e-9) * 100
+
+    # 상단 개선율 요약 지표
+    c1, c2 = placeholder.columns(2)
+    c1.metric("ADE 개선율 (Social Attention)", f"{ade_imp:+.1f}%",
+              f"미적용 {avg_ade_no:.3f} → 적용 {avg_ade_yes:.3f}")
+    c2.metric("FDE 개선율 (Social Attention)", f"{fde_imp:+.1f}%",
+              f"미적용 {avg_fde_no:.3f} → 적용 {avg_fde_yes:.3f}")
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=frames, y=ade_no, mode='lines', name='ADE 미적용',
+        line=dict(color='#64748b', width=1.5, dash='dot'),
+    ))
+    fig.add_trace(go.Scatter(
+        x=frames, y=ade_yes, mode='lines', name='ADE 적용',
+        line=dict(color='#22d3ee', width=2.5),
+        fill='tonexty', fillcolor='rgba(34,211,238,0.08)',
+    ))
+    fig.add_trace(go.Scatter(
+        x=frames, y=fde_no, mode='lines', name='FDE 미적용',
+        line=dict(color='#f97316', width=1.5, dash='dot'),
+    ))
+    fig.add_trace(go.Scatter(
+        x=frames, y=fde_yes, mode='lines', name='FDE 적용',
+        line=dict(color='#a78bfa', width=2.5),
+        fill='tonexty', fillcolor='rgba(167,139,250,0.08)',
+    ))
     fig.update_layout(
-        title=dict(
-            text=(f"ADE 미적용:{avg_ade_no:.3f} 적용:{avg_ade_yes:.3f} ({ade_imp:+.1f}%)  |  "
-                  f"FDE 미적용:{avg_fde_no:.3f} 적용:{avg_fde_yes:.3f} ({fde_imp:+.1f}%)"),
-            font=dict(size=11, color='white'),
-        ),
-        xaxis=dict(title="프레임"),
-        yaxis=dict(title="ADE (대리 지표)"),
-        height=300, margin=dict(l=10, r=10, t=40, b=40),
-        legend=dict(orientation='h', y=1.15),
+        xaxis=dict(title="프레임", showgrid=True, gridcolor='rgba(255,255,255,0.08)'),
+        yaxis=dict(title="오차 (m)", showgrid=True, gridcolor='rgba(255,255,255,0.08)'),
+        height=220,
+        margin=dict(l=10, r=10, t=8, b=36),
+        legend=dict(orientation='h', y=-0.25, font=dict(size=11)),
         plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
         font=dict(color='white'),
     )
@@ -742,8 +750,19 @@ if run_simulation or resume_simulation:
                 if risk_rows:
                     _render_risk_heatmap(risk_rows, risk_heatmap_placeholder)
                     _risk_df = pd.DataFrame(risk_rows).sort_values('Risk Score', ascending=False)
+                    _risk_df['Level'] = _risk_df['Level'].map(
+                        {'High': '🔴 High', 'Medium': '🟡 Medium', 'Low': '🟢 Low'}
+                    ).fillna(_risk_df['Level'])
                     if risk_table_placeholder is not None:
-                        risk_table_placeholder.dataframe(_risk_df, use_container_width=True, hide_index=True)
+                        risk_table_placeholder.dataframe(
+                            _risk_df, use_container_width=True, hide_index=True,
+                            column_config={
+                                'Risk Score': st.column_config.ProgressColumn(
+                                    'Risk Score', min_value=0, max_value=1, format="%.3f"),
+                                'TTC(s)':     st.column_config.NumberColumn('TTC (s)', format="%.2f"),
+                                'Depth(m)':   st.column_config.NumberColumn('Depth (m)', format="%.1f"),
+                            }
+                        )
                 if perf_placeholder is not None:
                     _fps = 1000.0 / max(_pred_ms, 1)
                     perf_placeholder.markdown(
