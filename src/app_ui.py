@@ -779,7 +779,9 @@ if run_simulation or resume_simulation:
                             }
                         )
                 if perf_placeholder is not None:
-                    _fps = 1000.0 / max(_pred_ms, 1)
+                    _worker = st.session_state.async_worker
+                    _fps_stats = _worker.fps_stats() if _worker else {'fps': 0.0}
+                    _fps = _fps_stats['fps']
                     perf_placeholder.markdown(
                         f'<div style="background:#1e293b;border-radius:8px;padding:8px 14px;'
                         f'font-size:13px;color:#94a3b8">'
