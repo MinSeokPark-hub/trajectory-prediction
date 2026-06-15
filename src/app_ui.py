@@ -786,8 +786,7 @@ if run_simulation or resume_simulation:
                         f'⚡ <b>추론 성능</b> &nbsp;|&nbsp; 예측 응답: '
                         f'<b style="color:#22d3ee">{_pred_ms:.1f} ms</b>'
                         f' &nbsp;|&nbsp; 추론 FPS: <b style="color:#4ade80">{_fps:.1f}</b>'
-                        f' &nbsp;|&nbsp; <span style="color:#64748b;font-size:11px">'
-                        f'(렌더링 제외 순수 ML 추론)</span></div>',
+                        f'</div>',
                         unsafe_allow_html=True
                     )
 
