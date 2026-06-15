@@ -433,11 +433,14 @@ def _render_ade_chart(ade_history, placeholder):
     """US-13 T14: Social Attention 전/후 ADE/FDE 비교"""
     if placeholder is None or len(ade_history) < 1:
         return
-    frames      = list(range(len(ade_history)))
-    ade_no  = [h['no_social']          for h in ade_history]
-    ade_yes = [h['social']             for h in ade_history]
-    fde_no  = [h.get('fde_no_social', 0) for h in ade_history]
-    fde_yes = [h.get('fde_social', 0)    for h in ade_history]
+
+    # 최근 50프레임 롤링 윈도우
+    window = ade_history[-50:]
+    frames  = list(range(len(window)))
+    ade_no  = [h['no_social']            for h in window]
+    ade_yes = [h['social']               for h in window]
+    fde_no  = [h.get('fde_no_social', 0) for h in window]
+    fde_yes = [h.get('fde_social', 0)    for h in window]
 
     avg_ade_no  = float(np.mean(ade_no))  if ade_no  else 0
     avg_ade_yes = float(np.mean(ade_yes)) if ade_yes else 0
@@ -453,28 +456,37 @@ def _render_ade_chart(ade_history, placeholder):
     c2.metric("FDE (Social Attention 적용)", f"{avg_fde_yes:.3f} m",
               f"미적용 {avg_fde_no:.3f} m  ({fde_diff:+.3f} m)")
 
+    C_ADE_NO  = '#64748b'
+    C_ADE_YES = '#22d3ee'
+    C_FDE_NO  = '#f97316'
+    C_FDE_YES = '#a78bfa'
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=frames, y=ade_no, mode='lines', name='ADE 미적용',
-        line=dict(color='#64748b', width=1.5, dash='dot'),
+        x=frames, y=ade_no, mode='lines',
+        name=f'<span style="color:{C_ADE_NO}">ADE 미적용</span>',
+        line=dict(color=C_ADE_NO, width=1.5, dash='dot'),
     ))
     fig.add_trace(go.Scatter(
-        x=frames, y=ade_yes, mode='lines', name='ADE 적용',
-        line=dict(color='#22d3ee', width=2.5),
+        x=frames, y=ade_yes, mode='lines',
+        name=f'<span style="color:{C_ADE_YES}">ADE 적용</span>',
+        line=dict(color=C_ADE_YES, width=2.5),
         fill='tonexty', fillcolor='rgba(34,211,238,0.08)',
     ))
     fig.add_trace(go.Scatter(
-        x=frames, y=fde_no, mode='lines', name='FDE 미적용',
-        line=dict(color='#f97316', width=1.5, dash='dot'),
+        x=frames, y=fde_no, mode='lines',
+        name=f'<span style="color:{C_FDE_NO}">FDE 미적용</span>',
+        line=dict(color=C_FDE_NO, width=1.5, dash='dot'),
     ))
     fig.add_trace(go.Scatter(
-        x=frames, y=fde_yes, mode='lines', name='FDE 적용',
-        line=dict(color='#a78bfa', width=2.5),
+        x=frames, y=fde_yes, mode='lines',
+        name=f'<span style="color:{C_FDE_YES}">FDE 적용</span>',
+        line=dict(color=C_FDE_YES, width=2.5),
         fill='tonexty', fillcolor='rgba(167,139,250,0.08)',
     ))
     fig.update_layout(
-        xaxis=dict(title="프레임", showgrid=True, gridcolor='rgba(255,255,255,0.08)'),
-        yaxis=dict(title="오차 (m)", showgrid=True, gridcolor='rgba(255,255,255,0.08)'),
+        xaxis=dict(title="프레임 (최근 50)", showgrid=True, gridcolor='rgba(255,255,255,0.08)'),
+        yaxis=dict(title="(m)", showgrid=True, gridcolor='rgba(255,255,255,0.08)'),
         height=220,
         margin=dict(l=10, r=10, t=8, b=36),
         legend=dict(orientation='h', y=-0.25, font=dict(size=11)),
