@@ -440,15 +440,15 @@ def _render_ade_chart(ade_history, placeholder):
     avg_ade_yes = float(np.mean(ade_yes)) if ade_yes else 0
     avg_fde_no  = float(np.mean(fde_no))  if fde_no  else 0
     avg_fde_yes = float(np.mean(fde_yes)) if fde_yes else 0
-    ade_imp = (avg_ade_no - avg_ade_yes) / (avg_ade_no + 1e-9) * 100
-    fde_imp = (avg_fde_no - avg_fde_yes) / (avg_fde_no + 1e-9) * 100
+    ade_diff = avg_ade_no - avg_ade_yes
+    fde_diff = avg_fde_no - avg_fde_yes
 
-    # 상단 개선율 요약 지표
+    # 상단 미터 단위 요약 지표
     c1, c2 = placeholder.columns(2)
-    c1.metric("ADE 개선율 (Social Attention)", f"{ade_imp:+.1f}%",
-              f"미적용 {avg_ade_no:.3f} → 적용 {avg_ade_yes:.3f}")
-    c2.metric("FDE 개선율 (Social Attention)", f"{fde_imp:+.1f}%",
-              f"미적용 {avg_fde_no:.3f} → 적용 {avg_fde_yes:.3f}")
+    c1.metric("ADE (Social Attention 적용)", f"{avg_ade_yes:.3f} m",
+              f"미적용 {avg_ade_no:.3f} m  ({ade_diff:+.3f} m)")
+    c2.metric("FDE (Social Attention 적용)", f"{avg_fde_yes:.3f} m",
+              f"미적용 {avg_fde_no:.3f} m  ({fde_diff:+.3f} m)")
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
