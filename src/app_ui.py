@@ -248,13 +248,6 @@ elif dataset_mode == "KITTI":
 else:
     engine, full_df = init_sgan()
 
-if run_simulation:
-    if st.session_state.async_worker is not None:
-        st.session_state.async_worker.stop()
-    st.session_state.async_worker = AsyncPredictionWorker(engine.predict_scene, n_workers=2)
-    st.session_state.async_worker.start()
-    st.session_state.short_id_map = _build_short_id_map(full_df)
-
 _TYPE_PREFIX = {
     'Pedestrian': 'P',
     'Cyclist':    'B',
@@ -274,6 +267,13 @@ def _build_short_id_map(df):
 
 def _sid(tid):
     return st.session_state.short_id_map.get(str(tid), str(tid))
+
+if run_simulation:
+    if st.session_state.async_worker is not None:
+        st.session_state.async_worker.stop()
+    st.session_state.async_worker = AsyncPredictionWorker(engine.predict_scene, n_workers=2)
+    st.session_state.async_worker.start()
+    st.session_state.short_id_map = _build_short_id_map(full_df)
 
 def _live_header(title):
     st.markdown(
