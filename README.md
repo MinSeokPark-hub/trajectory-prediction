@@ -28,9 +28,15 @@ trajectory-prediction/
 │   ├── train_cnn3d.py          # 3D CNN 모델 학습
 │   ├── train_simple_ttc.py     # SimpleTTC 모델 학습
 │   ├── train_simple_ttc_v2.py  # SimpleTTC v2 학습
+│   ├── train_paper.py          # [논문 재현] 자차 운동 기반 TTC 학습 (Weighted L1)
+│   ├── evaluate_paper.py       # [논문 재현] AP·Danger Recall·MAE·Bootstrap CI 평가
 │   ├── visualize.py            # 궤적 시각화
 │   ├── visualize_sgan.py       # ETH/UCY 궤적 시각화
 │   ├── test_integration.py     # 통합 테스트
+│   ├── models/                              # [논문 재현] 모델 정의
+│   │   └── resnet_ttc.py       # ResNet-18 + ego-motion MLP (4가지 변형)
+│   ├── data/                                # [논문 재현] 데이터셋
+│   │   └── nuscenes_ttc_dataset.py  # nuScenes 씬 단위 분할 + SAT 라벨 Dataset
 │   ├── predictors/
 │   │   ├── simple_ttc.py       # SimpleTTC MLP (픽셀 기반 TTC 직접 예측)
 │   │   ├── lstm_predictor.py   # LSTM 3D 궤적 예측 모델
@@ -48,6 +54,8 @@ trajectory-prediction/
 │       ├── sgan_parser.py      # ETH/UCY 데이터셋 파서
 │       ├── nuscenes_parser.py  # nuScenes 데이터셋 파서
 │       ├── physics_engine.py   # 벡터 기반 TTC 물리 계산
+│       ├── sat_ttc.py          # [논문 재현] SAT 기반 GT TTC 라벨 계산
+│       ├── ego_motion.py       # [논문 재현] 자차 운동 20차원 특징 추출
 │       ├── occlusion_handler.py    # Occlusion 대응 관성 예측 모듈 (Sprint 2)
 │       ├── async_worker.py         # 비동기 예측 워커 (Sprint 2)
 │       ├── validate_occlusion.py   # T12 Occlusion 전/후 예측 적중률 검증
@@ -149,6 +157,58 @@ graph TD
 | ≤ 1.5초 | 🔴 **Danger** |
 | 1.5 ~ 3.0초 | 🟡 **Warning** |
 | > 3.0초 | 🟢 **Safe** |
+
+---
+
+## 논문 재현 모듈 — 단안 영상 TTC 추정에서 자차 운동 정보의 효과
+
+논문 「단안 영상 기반 TTC 추정에서 자차 운동 정보의 효과」를 재현한 **독립 실험 모듈**입니다. 메인 파이프라인(Streamlit·LSTM·앙상블)과 별개로, ResNet-18 이미지 인코더에 자차 운동(ego-motion) 특징을 결합해 TTC를 직접 회귀하고, **자차 운동 정보가 TTC 추정에 기여하는지**를 4가지 변형으로 비교합니다.
+
+### 구성 파일
+
+| 파일 | 역할 |
+|------|------|
+| `src/utils/sat_ttc.py` | SAT(분리축 정리) 기반 GT TTC 라벨 계산 (상한 10초) |
+| `src/utils/ego_motion.py` | 자차 운동 20차원 특징 추출 (4프레임 × 5특징: speed·종가속도·회전율·dx·dy) |
+| `src/models/resnet_ttc.py` | ResNet-18(ImageNet) + ego-motion MLP, 4가지 변형 공유 구조 |
+| `src/data/nuscenes_ttc_dataset.py` | nuScenes 씬 단위 분할(70/15/15, seed=2024) Dataset |
+| `src/train_paper.py` | Weighted L1 Loss 학습 (17.53 / 6.96 / 0.36) |
+| `src/evaluate_paper.py` | AP · Danger Recall · MAE · Bootstrap CI 평가 |
+
+### 모델 변형 4종
+
+| 변형 | 입력 구성 | 목적 |
+|------|-----------|------|
+| `image_only` | 이미지만 | 베이스라인 |
+| `dummy` | 이미지 + ego(전부 0) | 용량(파라미터) 효과 분리 |
+| `velocity_only` | 이미지 + 속도(speed)만 | 속도 정보만의 기여 |
+| `full` | 이미지 + 전체 ego 20차원 | 전체 자차 운동 정보 |
+
+### 실행 방법
+
+학습 (모드별 개별 실행):
+```bash
+python src/train_paper.py --dataroot /path/to/nuscenes --mode full --epochs 3 --batch 16
+# mode: image_only | dummy | velocity_only | full
+```
+
+평가 (test·val split 지원):
+```bash
+python src/evaluate_paper.py --dataroot /path/to/nuscenes --ckpt checkpoints/best_full.pt --mode full --split test
+```
+
+### 평가 지표
+
+| 지표 | 정의 |
+|------|------|
+| **AP** | 위험 라벨(GT TTC<3s)에 대한 Average Precision (위험도 점수 = 10 − clip(pred,0,10)) |
+| **Danger Recall** | 실제 위험(TTC<3s) 중 예측 TTC<3s로 맞춘 비율 |
+| **MAE** | \|예측 TTC − GT TTC\| 평균 (초) |
+| **Bootstrap AP** | 씬 단위 AP를 1,000회 재표집한 평균·95% 신뢰구간 |
+
+### 데이터 요구사항
+
+nuScenes **v1.0-trainval 전체(blobs 01~10)** 기준으로 설계되었습니다. 일부 blob만으로 학습하면 test/val split에 위험 샘플(TTC<3s)이 희박하여 **Danger Recall이 0에 수렴**하고 AP가 통계적으로 유의미하지 않게 나옵니다. 유의미한 모드 비교를 위해서는 충분한 blob 확보가 필요합니다. 코드는 CAM_FRONT 이미지 존재 여부를 자동 반영하므로, blob 추가 후 캐시(`cache/*.json`)만 재생성하면 그대로 동작합니다.
 
 ---
 

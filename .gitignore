@@ -40,3 +40,7 @@ Miniconda3-*.sh
 
 # Temp files
 0.1
+
+# TTC project byproducts
+cache/
+logs_*.txt
