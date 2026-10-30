@@ -1,0 +1,52 @@
+[NuScenes] Loading v1.0-trainval ...
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+  Train frames: 21503
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+  Val frames: 4596
+[Train] Device cuda  Mode image_only  Seed 7
+  E1 Step 0/1344  Loss=4.6024  7s
+  E1 Step 100/1344  Loss=2.4649  72s
+  E1 Step 200/1344  Loss=5.4175  126s
+  E1 Step 300/1344  Loss=3.6976  182s
+  E1 Step 400/1344  Loss=2.3402  236s
+  E1 Step 500/1344  Loss=2.1198  291s
+  E1 Step 600/1344  Loss=1.9491  344s
+  E1 Step 700/1344  Loss=1.7517  399s
+  E1 Step 800/1344  Loss=1.9566  452s
+  E1 Step 900/1344  Loss=2.0559  504s
+  E1 Step 1000/1344  Loss=2.2958  554s
+  E1 Step 1100/1344  Loss=3.6155  605s
+  E1 Step 1200/1344  Loss=1.8196  659s
+  E1 Step 1300/1344  Loss=1.9359  710s
+Epoch 1  TrainLoss=2.8901  ValLoss=2.7215
+  E2 Step 0/1344  Loss=4.0253  5s
+  E2 Step 100/1344  Loss=1.4414  60s
+  E2 Step 200/1344  Loss=7.9799  116s
+  E2 Step 300/1344  Loss=8.3546  172s
+  E2 Step 400/1344  Loss=2.3213  227s
+  E2 Step 500/1344  Loss=0.6965  277s
+  E2 Step 600/1344  Loss=0.6730  329s
+  E2 Step 700/1344  Loss=0.4896  380s
+  E2 Step 800/1344  Loss=3.4653  431s
+  E2 Step 900/1344  Loss=1.4599  482s
+  E2 Step 1000/1344  Loss=0.7164  533s
+  E2 Step 1100/1344  Loss=0.9820  584s
+  E2 Step 1200/1344  Loss=4.9556  636s
+  E2 Step 1300/1344  Loss=0.5814  687s
+Epoch 2  TrainLoss=2.6508  ValLoss=2.8812
+  E3 Step 0/1344  Loss=0.9809  5s
+  E3 Step 100/1344  Loss=1.7642  61s
+  E3 Step 200/1344  Loss=0.6444  116s
+  E3 Step 300/1344  Loss=1.0549  168s
+  E3 Step 400/1344  Loss=0.6104  224s
+  E3 Step 500/1344  Loss=1.5933  307s
+  E3 Step 600/1344  Loss=0.5603  393s
+  E3 Step 700/1344  Loss=1.0031  473s
+  E3 Step 800/1344  Loss=1.4969  554s
+  E3 Step 900/1344  Loss=6.0531  643s
+  E3 Step 1000/1344  Loss=0.5313  736s
+  E3 Step 1100/1344  Loss=0.5202  797s
+  E3 Step 1200/1344  Loss=4.2572  861s
+  E3 Step 1300/1344  Loss=2.2890  946s
+Epoch 3  TrainLoss=1.8209  ValLoss=3.3893
+[Done] image_only_seed7  (마지막 epoch 모델: checkpoints/last_image_only_seed7.pt)

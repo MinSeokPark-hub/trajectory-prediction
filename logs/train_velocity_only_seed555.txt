@@ -1,0 +1,52 @@
+[NuScenes] Loading v1.0-trainval ...
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+  Train frames: 21503
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+  Val frames: 4596
+[Train] Device cuda  Mode velocity_only  Seed 555
+  E1 Step 0/1344  Loss=7.4693  10s
+  E1 Step 100/1344  Loss=2.3333  90s
+  E1 Step 200/1344  Loss=2.1516  169s
+  E1 Step 300/1344  Loss=4.2730  252s
+  E1 Step 400/1344  Loss=2.0233  337s
+  E1 Step 500/1344  Loss=3.7302  422s
+  E1 Step 600/1344  Loss=2.0869  503s
+  E1 Step 700/1344  Loss=2.5405  593s
+  E1 Step 800/1344  Loss=2.4104  683s
+  E1 Step 900/1344  Loss=1.9685  763s
+  E1 Step 1000/1344  Loss=1.9998  841s
+  E1 Step 1100/1344  Loss=1.7700  924s
+  E1 Step 1200/1344  Loss=3.7317  1005s
+  E1 Step 1300/1344  Loss=1.9912  1094s
+Epoch 1  TrainLoss=2.8825  ValLoss=2.6694
+  E2 Step 0/1344  Loss=3.7425  9s
+  E2 Step 100/1344  Loss=1.3856  102s
+  E2 Step 200/1344  Loss=1.7977  195s
+  E2 Step 300/1344  Loss=6.0948  290s
+  E2 Step 400/1344  Loss=1.5550  384s
+  E2 Step 500/1344  Loss=3.2859  478s
+  E2 Step 600/1344  Loss=0.9041  574s
+  E2 Step 700/1344  Loss=9.2382  667s
+  E2 Step 800/1344  Loss=1.6265  761s
+  E2 Step 900/1344  Loss=0.5721  856s
+  E2 Step 1000/1344  Loss=7.1268  951s
+  E2 Step 1100/1344  Loss=1.7390  1045s
+  E2 Step 1200/1344  Loss=2.8090  1139s
+  E2 Step 1300/1344  Loss=0.5474  1234s
+Epoch 2  TrainLoss=2.5859  ValLoss=3.2382
+  E3 Step 0/1344  Loss=1.1449  8s
+  E3 Step 100/1344  Loss=1.1421  102s
+  E3 Step 200/1344  Loss=5.3713  195s
+  E3 Step 300/1344  Loss=0.6400  288s
+  E3 Step 400/1344  Loss=0.4985  380s
+  E3 Step 500/1344  Loss=0.5837  473s
+  E3 Step 600/1344  Loss=1.0986  563s
+  E3 Step 700/1344  Loss=0.7474  675s
+  E3 Step 800/1344  Loss=0.5313  789s
+  E3 Step 900/1344  Loss=0.8790  898s
+  E3 Step 1000/1344  Loss=0.5068  976s
+  E3 Step 1100/1344  Loss=2.5043  1068s
+  E3 Step 1200/1344  Loss=0.3674  1156s
+  E3 Step 1300/1344  Loss=1.0929  1244s
+Epoch 3  TrainLoss=1.7766  ValLoss=2.7785
+[Done] velocity_only_seed555  (마지막 epoch 모델: checkpoints/last_velocity_only_seed555.pt)

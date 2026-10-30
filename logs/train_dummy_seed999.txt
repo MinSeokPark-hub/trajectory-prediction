@@ -1,0 +1,52 @@
+[NuScenes] Loading v1.0-trainval ...
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+  Train frames: 21503
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+  Val frames: 4596
+[Train] Device cuda  Mode dummy  Seed 999
+  E1 Step 0/1344  Loss=5.1227  8s
+  E1 Step 100/1344  Loss=6.1497  82s
+  E1 Step 200/1344  Loss=1.9905  166s
+  E1 Step 300/1344  Loss=1.8964  248s
+  E1 Step 400/1344  Loss=2.0198  332s
+  E1 Step 500/1344  Loss=3.7759  416s
+  E1 Step 600/1344  Loss=2.1623  477s
+  E1 Step 700/1344  Loss=1.7738  555s
+  E1 Step 800/1344  Loss=1.6945  635s
+  E1 Step 900/1344  Loss=4.1422  713s
+  E1 Step 1000/1344  Loss=2.1392  790s
+  E1 Step 1100/1344  Loss=1.9390  873s
+  E1 Step 1200/1344  Loss=1.9732  946s
+  E1 Step 1300/1344  Loss=1.8867  1003s
+Epoch 1  TrainLoss=2.8660  ValLoss=2.7091
+  E2 Step 0/1344  Loss=2.3055  5s
+  E2 Step 100/1344  Loss=5.0872  75s
+  E2 Step 200/1344  Loss=1.9033  145s
+  E2 Step 300/1344  Loss=0.8322  217s
+  E2 Step 400/1344  Loss=0.7635  292s
+  E2 Step 500/1344  Loss=3.8101  368s
+  E2 Step 600/1344  Loss=2.1985  441s
+  E2 Step 700/1344  Loss=2.3276  512s
+  E2 Step 800/1344  Loss=0.6250  581s
+  E2 Step 900/1344  Loss=0.9180  652s
+  E2 Step 1000/1344  Loss=7.0197  721s
+  E2 Step 1100/1344  Loss=1.8567  792s
+  E2 Step 1200/1344  Loss=1.6409  861s
+  E2 Step 1300/1344  Loss=1.3380  937s
+Epoch 2  TrainLoss=2.5800  ValLoss=3.2784
+  E3 Step 0/1344  Loss=1.0934  8s
+  E3 Step 100/1344  Loss=4.9332  94s
+  E3 Step 200/1344  Loss=2.0172  183s
+  E3 Step 300/1344  Loss=0.7105  267s
+  E3 Step 400/1344  Loss=0.6029  345s
+  E3 Step 500/1344  Loss=0.3828  433s
+  E3 Step 600/1344  Loss=7.4752  524s
+  E3 Step 700/1344  Loss=6.9787  613s
+  E3 Step 800/1344  Loss=0.4646  703s
+  E3 Step 900/1344  Loss=0.5530  787s
+  E3 Step 1000/1344  Loss=0.5677  865s
+  E3 Step 1100/1344  Loss=1.1575  952s
+  E3 Step 1200/1344  Loss=1.9604  1045s
+  E3 Step 1300/1344  Loss=4.1638  1140s
+Epoch 3  TrainLoss=1.8017  ValLoss=2.7960
+[Done] dummy_seed999  (마지막 epoch 모델: checkpoints/last_dummy_seed999.pt)

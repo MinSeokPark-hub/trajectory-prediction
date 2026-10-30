@@ -1,0 +1,52 @@
+[NuScenes] Loading v1.0-trainval ...
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+  Train frames: 21503
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+  Val frames: 4596
+[Train] Device cuda  Mode full  Seed 555
+  E1 Step 0/1344  Loss=7.4703  9s
+  E1 Step 100/1344  Loss=2.3137  86s
+  E1 Step 200/1344  Loss=2.1556  169s
+  E1 Step 300/1344  Loss=4.2499  254s
+  E1 Step 400/1344  Loss=1.9795  342s
+  E1 Step 500/1344  Loss=3.7723  428s
+  E1 Step 600/1344  Loss=2.0729  512s
+  E1 Step 700/1344  Loss=2.5252  582s
+  E1 Step 800/1344  Loss=2.4026  662s
+  E1 Step 900/1344  Loss=2.0350  742s
+  E1 Step 1000/1344  Loss=2.0589  822s
+  E1 Step 1100/1344  Loss=1.7888  902s
+  E1 Step 1200/1344  Loss=4.1401  975s
+  E1 Step 1300/1344  Loss=2.0217  1051s
+Epoch 1  TrainLoss=2.8963  ValLoss=2.7023
+  E2 Step 0/1344  Loss=3.5956  9s
+  E2 Step 100/1344  Loss=1.3564  118s
+  E2 Step 200/1344  Loss=1.7973  226s
+  E2 Step 300/1344  Loss=6.2420  333s
+  E2 Step 400/1344  Loss=2.5314  442s
+  E2 Step 500/1344  Loss=3.3526  550s
+  E2 Step 600/1344  Loss=1.5864  657s
+  E2 Step 700/1344  Loss=10.3374  766s
+  E2 Step 800/1344  Loss=1.8858  873s
+  E2 Step 900/1344  Loss=0.6042  952s
+  E2 Step 1000/1344  Loss=8.1269  1036s
+  E2 Step 1100/1344  Loss=1.9382  1121s
+  E2 Step 1200/1344  Loss=4.6661  1202s
+  E2 Step 1300/1344  Loss=0.6566  1272s
+Epoch 2  TrainLoss=2.6335  ValLoss=3.2726
+  E3 Step 0/1344  Loss=1.3260  6s
+  E3 Step 100/1344  Loss=1.1944  77s
+  E3 Step 200/1344  Loss=3.7429  162s
+  E3 Step 300/1344  Loss=0.5478  245s
+  E3 Step 400/1344  Loss=0.5290  329s
+  E3 Step 500/1344  Loss=0.6741  411s
+  E3 Step 600/1344  Loss=0.6325  485s
+  E3 Step 700/1344  Loss=1.3873  561s
+  E3 Step 800/1344  Loss=0.5494  644s
+  E3 Step 900/1344  Loss=0.7206  723s
+  E3 Step 1000/1344  Loss=0.5744  803s
+  E3 Step 1100/1344  Loss=2.5844  884s
+  E3 Step 1200/1344  Loss=0.7317  962s
+  E3 Step 1300/1344  Loss=1.6313  1019s
+Epoch 3  TrainLoss=1.7594  ValLoss=3.5937
+[Done] full_seed555  (마지막 epoch 모델: checkpoints/last_full_seed555.pt)

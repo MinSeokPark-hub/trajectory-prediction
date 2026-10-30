@@ -42,5 +42,4 @@ Miniconda3-*.sh
 0.1
 
 # TTC project byproducts
-cache/
 logs_*.txt

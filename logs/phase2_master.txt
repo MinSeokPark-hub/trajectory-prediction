@@ -1,0 +1,45 @@
+nohup: ignoring input
+[stats] ego_stats.npz 생성 중...
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+[stats] 저장 완료
+[GPU0] image_only seed42 시작 12:58:58
+[GPU3] image_only seed123 시작 12:58:58
+[GPU6] image_only seed7 시작 12:58:58
+[GPU7] image_only seed555 시작 12:58:58
+[GPU6] image_only seed7 완료 13:49:59
+[GPU6] dummy seed7 시작 13:49:59
+[GPU3] image_only seed123 완료 13:49:59
+[GPU3] dummy seed123 시작 13:49:59
+[GPU0] image_only seed42 완료 13:50:48
+[GPU0] dummy seed42 시작 13:50:48
+[GPU7] image_only seed555 완료 13:51:23
+[GPU7] dummy seed555 시작 13:51:23
+[GPU6] dummy seed7 완료 14:54:00
+[GPU6] velocity_only seed7 시작 14:54:00
+[GPU3] dummy seed123 완료 14:56:05
+[GPU3] velocity_only seed123 시작 14:56:05
+[GPU0] dummy seed42 완료 14:56:48
+[GPU0] velocity_only seed42 시작 14:56:48
+[GPU7] dummy seed555 완료 15:05:53
+[GPU7] velocity_only seed555 시작 15:05:53
+[GPU6] velocity_only seed7 완료 16:01:52
+[GPU6] full seed7 시작 16:01:52
+[GPU3] velocity_only seed123 완료 16:02:50
+[GPU3] full seed123 시작 16:02:50
+[GPU0] velocity_only seed42 완료 16:03:58
+[GPU0] full seed42 시작 16:03:58
+[GPU7] velocity_only seed555 완료 16:22:06
+[GPU7] full seed555 시작 16:22:06
+[GPU6] full seed7 완료 17:10:19
+[GPU6] velocity_only seed999 시작 17:10:19
+[GPU3] full seed123 완료 17:10:26
+[GPU3] dummy seed999 시작 17:10:26
+[GPU0] full seed42 완료 17:10:43
+[GPU0] image_only seed999 시작 17:10:43
+[GPU7] full seed555 완료 17:33:43
+[GPU7] full seed999 시작 17:33:43
+[GPU3] dummy seed999 완료 18:16:58
+[GPU0] image_only seed999 완료 18:20:28
+[GPU6] velocity_only seed999 완료 18:21:27
+[GPU7] full seed999 완료 18:36:58
+===== Phase 2 전체 완료 18:36:58 =====

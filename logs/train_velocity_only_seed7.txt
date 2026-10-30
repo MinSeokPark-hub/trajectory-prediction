@@ -1,0 +1,52 @@
+[NuScenes] Loading v1.0-trainval ...
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+  Train frames: 21503
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+  Val frames: 4596
+[Train] Device cuda  Mode velocity_only  Seed 7
+  E1 Step 0/1344  Loss=5.6356  8s
+  E1 Step 100/1344  Loss=2.0578  75s
+  E1 Step 200/1344  Loss=2.1943  145s
+  E1 Step 300/1344  Loss=4.0954  221s
+  E1 Step 400/1344  Loss=3.3536  297s
+  E1 Step 500/1344  Loss=2.2067  371s
+  E1 Step 600/1344  Loss=2.1149  449s
+  E1 Step 700/1344  Loss=2.0412  533s
+  E1 Step 800/1344  Loss=2.0813  609s
+  E1 Step 900/1344  Loss=2.4648  679s
+  E1 Step 1000/1344  Loss=1.4585  758s
+  E1 Step 1100/1344  Loss=1.9200  838s
+  E1 Step 1200/1344  Loss=1.6546  918s
+  E1 Step 1300/1344  Loss=1.8753  1005s
+Epoch 1  TrainLoss=2.8523  ValLoss=2.6333
+  E2 Step 0/1344  Loss=4.2777  8s
+  E2 Step 100/1344  Loss=9.5854  93s
+  E2 Step 200/1344  Loss=2.8673  177s
+  E2 Step 300/1344  Loss=12.4161  254s
+  E2 Step 400/1344  Loss=3.2533  332s
+  E2 Step 500/1344  Loss=1.5817  413s
+  E2 Step 600/1344  Loss=1.6679  499s
+  E2 Step 700/1344  Loss=4.8287  594s
+  E2 Step 800/1344  Loss=1.5427  676s
+  E2 Step 900/1344  Loss=4.0833  754s
+  E2 Step 1000/1344  Loss=1.8022  831s
+  E2 Step 1100/1344  Loss=3.6113  911s
+  E2 Step 1200/1344  Loss=0.5685  989s
+  E2 Step 1300/1344  Loss=5.1911  1070s
+Epoch 2  TrainLoss=2.5711  ValLoss=3.6970
+  E3 Step 0/1344  Loss=0.7299  9s
+  E3 Step 100/1344  Loss=0.5629  96s
+  E3 Step 200/1344  Loss=0.8780  186s
+  E3 Step 300/1344  Loss=1.0510  267s
+  E3 Step 400/1344  Loss=0.5050  350s
+  E3 Step 500/1344  Loss=0.4599  429s
+  E3 Step 600/1344  Loss=1.9654  509s
+  E3 Step 700/1344  Loss=6.1017  589s
+  E3 Step 800/1344  Loss=0.4463  668s
+  E3 Step 900/1344  Loss=0.5926  745s
+  E3 Step 1000/1344  Loss=2.0020  823s
+  E3 Step 1100/1344  Loss=2.9011  895s
+  E3 Step 1200/1344  Loss=1.1517  962s
+  E3 Step 1300/1344  Loss=1.7083  1039s
+Epoch 3  TrainLoss=1.7852  ValLoss=3.3470
+[Done] velocity_only_seed7  (마지막 epoch 모델: checkpoints/last_velocity_only_seed7.pt)

@@ -1,0 +1,12 @@
+[NuScenes] Loading v1.0-trainval ...
+[Dataset:test] 캐시 로드: cache/frames_test.npz — 프레임 4643, 위험 93
+[Eval] checkpoints/last_full_seed42.pt  mode=full  split=test
+
+===== 평가 결과 =====
+  Split         : test  (프레임 4643, 위험 93)
+  AP            : 0.2561
+  Danger Recall : 0.0645
+  MAE           : 1.6780
+=====================
+
+[Saved] preds/pred_full_seed42_test.npz

@@ -1,70 +1,64 @@
 # src/utils/sat_ttc.py
-import numpy as np
-from typing import Optional
+"""
+SAT(분리축 정리) 기반 TTC 계산 — 논문 3.2.1절.
 
+두 직사각형(자차 박스, 객체 박스)이 현재 속도로 직선 등속 운동한다고
+가정했을 때, 바닥면이 처음 겹치는 시각을 TTC로 정의한다.
+
+구현 방식(검증 용이한 버전)
+------------------------------------------------------------------
+- 상대 속도 rel_v = obj_v - ego_v (모두 자차 로컬 프레임, ego_yaw=0 가정)
+- 각 분리축(자차 2 + 객체 2)에서 두 박스의 1D 투영이 겹치는 시간 구간을
+  [lo/v, hi/v] 로 직접 계산 (lo=a_min-b_max, hi=a_max-b_min).
+- 4개 축 구간의 교집합이 시작되는 시각이 TTC.
+- 지금 이미 겹쳐 있으면 0.0(접촉), 끝까지 안 겹치면 TTC_MAX.
+"""
+import numpy as np
 
 # 자차 박스 설정 (논문 설정 C: Renault Zoe 제원)
-EGO_W = 1.730   # 폭 (m)
-EGO_L = 4.084   # 길이 (m)
-EGO_OFFSET = 1.4  # 중심 오프셋 (앞으로)
-TTC_MAX = 10.0   # 충돌 없으면 10초
+EGO_W = 1.730      # 폭 (m)
+EGO_L = 4.084      # 길이 (m)
+EGO_OFFSET = 1.4   # 박스 중심을 기준점보다 앞으로 (m)
+TTC_MAX = 10.0     # 충돌 없으면 10초
 
 
 def _get_rect_axes(yaw: float) -> np.ndarray:
-    """직사각형의 두 분리축 (회전 반영)"""
+    """직사각형의 두 단위 분리축 (length축, width축)."""
     c, s = np.cos(yaw), np.sin(yaw)
-    return np.array([[c, s], [-s, c]])  # (2, 2)
+    return np.array([[c, s], [-s, c]])
 
 
 def _project_rect(center: np.ndarray, half_l: float, half_w: float,
                   yaw: float, axis: np.ndarray) -> tuple:
-    """직사각형을 축에 투영한 [min, max] 반환"""
+    """회전 직사각형을 axis에 투영한 [min, max]."""
     axes = _get_rect_axes(yaw)
     corners = np.array([
         center + axes[0] * half_l + axes[1] * half_w,
         center + axes[0] * half_l - axes[1] * half_w,
         center - axes[0] * half_l + axes[1] * half_w,
         center - axes[0] * half_l - axes[1] * half_w,
-    ])  # (4, 2)
+    ])
     proj = corners @ axis
-    return proj.min(), proj.max()
+    return float(proj.min()), float(proj.max())
 
 
-def _overlap_interval(c1: np.ndarray, hl1: float, hw1: float, yaw1: float,
-                      c2: np.ndarray, hl2: float, hw2: float, yaw2: float,
-                      vc: np.ndarray, axis: np.ndarray) -> tuple:
+def _axis_overlap_time(a_min, a_max, b_min, b_max, v):
     """
-    한 축에서 두 직사각형의 투영이 겹치는 시간 구간 [t_enter, t_exit] 반환.
-    vc = 상대 속도 벡터 (obj - ego)
+    축 위에서 box1=[a_min,a_max](고정), box2=[b_min,b_max]가 속도 v로
+    움직일 때, 두 투영이 겹치는 시간 구간 [t_enter, t_exit] 반환.
+
+    box2(t) = [b_min + v t, b_max + v t].
+    겹침 조건:  a_min - b_max <= v t <= a_max - b_min.
     """
-    min1, max1 = _project_rect(c1, hl1, hw1, yaw1, axis)
-    min2, max2 = _project_rect(c2, hl2, hw2, yaw2, axis)
-    v = float(vc @ axis)  # 상대속도의 축 방향 성분
-
-    # 이미 겹쳐 있으면 [0, inf]
-    if min2 <= max1 and min1 <= max2:
-        if abs(v) < 1e-9:
-            return 0.0, np.inf
-        t1 = (max1 - min2) / v if v != 0 else np.inf
-        t2 = (min1 - max2) / v if v != 0 else np.inf
-        return min(t1, t2), max(t1, t2)
-
-    # 겹치지 않음 — 언제 겹치기 시작하고 끝나는지
-    if abs(v) < 1e-9:
-        return np.inf, np.inf  # 평행, 안 만남
-
-    # gap 방향에 따라
-    if max1 < min2:
-        t_enter = (min2 - max1) / v
-        t_exit  = (max2 - min1) / v
-    else:
-        t_enter = (max1 - min2) / (-v)
-        t_exit  = (min1 - max2) / (-v)
-
-    if t_enter > t_exit:
-        t_enter, t_exit = t_exit, t_enter
-
-    return t_enter, t_exit
+    lo = a_min - b_max
+    hi = a_max - b_min          # 항상 lo <= hi
+    if abs(v) < 1e-12:
+        # 상대 운동 없음: 지금 겹쳐 있으면 영원히, 아니면 전혀
+        if lo <= 0.0 <= hi:
+            return -np.inf, np.inf
+        return np.inf, -np.inf   # 빈 구간
+    t1, t2 = lo / v, hi / v
+    return (t1, t2) if t1 <= t2 else (t2, t1)
 
 
 def compute_ttc_sat(
@@ -75,65 +69,44 @@ def compute_ttc_sat(
     ego_yaw: float = 0.0,
 ) -> float:
     """
-    SAT 기반 TTC 계산 (논문 3.2.1절).
+    SAT 기반 TTC (초). 입력은 모두 자차 로컬 프레임, ego_yaw=0 가정.
 
-    모든 좌표는 자차 기준 로컬 프레임 (ego 중심이 원점).
-    ego_yaw=0 가정 (자차는 항상 전방이 +x).
+    obj_x, obj_y   : 객체 중심 (자차 기준 상대 좌표, m)
+    obj_yaw        : 객체 heading (rad)
+    obj_w, obj_l   : 객체 폭·길이 (m)
+    obj_vx, obj_vy : 객체 속도 (자차 로컬 프레임, m/s)
+    ego_vx, ego_vy : 자차 속도 (자차 로컬 프레임, m/s)
 
-    Parameters
-    ----------
-    obj_x, obj_y : 객체 중심 (자차 기준 상대 좌표, m)
-    obj_yaw      : 객체 heading (rad, 전방 +x 기준)
-    obj_w, obj_l : 객체 폭·길이 (m)
-    obj_vx, obj_vy : 객체 속도 (월드 프레임, m/s)
-    ego_vx, ego_vy : 자차 속도 (월드 프레임, m/s)
-    ego_yaw      : 자차 heading (rad)
-
-    Returns
-    -------
-    TTC (초). 충돌 없으면 TTC_MAX(10.0).
+    반환: TTC. 이미 접촉이면 0.0, 충돌 없으면 TTC_MAX.
     """
-    # 자차 박스 중심 (오프셋 적용)
-    ego_cx = EGO_OFFSET * np.cos(ego_yaw)
-    ego_cy = EGO_OFFSET * np.sin(ego_yaw)
-    ego_center = np.array([ego_cx, ego_cy])
-
+    ego_center = np.array([EGO_OFFSET * np.cos(ego_yaw),
+                           EGO_OFFSET * np.sin(ego_yaw)])
     obj_center = np.array([obj_x, obj_y])
 
-    # 상대 속도 (obj - ego)
-    rel_vx = obj_vx - ego_vx
-    rel_vy = obj_vy - ego_vy
-    rel_v  = np.array([rel_vx, rel_vy])
+    # 상대 속도 (객체 - 자차)
+    rel_v = np.array([obj_vx - ego_vx, obj_vy - ego_vy])
 
-    # 이미 겹쳐있으면 TTC = 0 (논문에서 7개 제외한 케이스)
-    # → 여기서는 그냥 0 반환
-    if np.linalg.norm(rel_v) < 1e-6:
-        return TTC_MAX
+    # 분리축: 자차 2축 + 객체 2축
+    axes = np.vstack([_get_rect_axes(ego_yaw), _get_rect_axes(obj_yaw)])
 
-    # 4개 분리축: 자차 2축 + 객체 2축
-    ego_axes = _get_rect_axes(ego_yaw)    # (2, 2)
-    obj_axes = _get_rect_axes(obj_yaw)    # (2, 2)
-    axes = np.vstack([ego_axes, obj_axes])  # (4, 2)
-
-    t_enter_global = 0.0
-    t_exit_global  = np.inf
-
+    t_enter_g, t_exit_g = -np.inf, np.inf
     for axis in axes:
-        axis = axis / (np.linalg.norm(axis) + 1e-12)
-        t_en, t_ex = _overlap_interval(
-            ego_center, EGO_L / 2, EGO_W / 2, ego_yaw,
-            obj_center, obj_l / 2, obj_w / 2, obj_yaw,
-            rel_v, axis
-        )
-        if t_en > t_ex or t_ex < 0:
-            # 이 축에서 절대 안 만남
+        a_min, a_max = _project_rect(ego_center, EGO_L / 2, EGO_W / 2,
+                                     ego_yaw, axis)
+        b_min, b_max = _project_rect(obj_center, obj_l / 2, obj_w / 2,
+                                     obj_yaw, axis)
+        v = float(rel_v @ axis)
+        te, tx = _axis_overlap_time(a_min, a_max, b_min, b_max, v)
+        if te > t_enter_g:
+            t_enter_g = te
+        if tx < t_exit_g:
+            t_exit_g = tx
+        if t_enter_g > t_exit_g:      # 교집합 없음 → 충돌 안 함
             return TTC_MAX
 
-        t_enter_global = max(t_enter_global, t_en)
-        t_exit_global  = min(t_exit_global,  t_ex)
-
-    if t_enter_global > t_exit_global or t_enter_global < 0:
+    # 겹침 구간 [t_enter_g, t_exit_g]
+    if t_exit_g < 0.0:                # 겹침이 과거에만 → 충돌 안 함
         return TTC_MAX
-
-    ttc = float(t_enter_global)
-    return min(ttc, TTC_MAX)
+    if t_enter_g <= 0.0:              # 지금 이미 겹침 → 접촉
+        return 0.0
+    return float(min(t_enter_g, TTC_MAX))

@@ -1,0 +1,18 @@
+nohup: ignoring input
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+[Dataset:test] 캐시 로드: cache/frames_test.npz — 프레임 4643, 위험 93
+[Obj:train] 객체 단위 라벨 계산...
+[Obj:train] 객체 샘플 116711
+[Obj:val] 객체 단위 라벨 계산...
+[Obj:val] 객체 샘플 25673
+  Epoch 1  TrainLoss=1.2742  ValMAE=0.3947  ValRecall=0.0000
+  Epoch 2  TrainLoss=1.2225  ValMAE=0.2242  ValRecall=0.0000
+  Epoch 3  TrainLoss=1.2168  ValMAE=0.2922  ValRecall=0.0000
+
+====================================================
+[4.1 객체단위 라벨] 검증 예측 분포
+  라벨 std = 0.919,  예측 std = 0.067
+  라벨 평균 = 9.841,  예측 평균 = 9.852
+  → 예측 std가 라벨 std보다 크게 작으면 '평균으로 몰림'
+====================================================

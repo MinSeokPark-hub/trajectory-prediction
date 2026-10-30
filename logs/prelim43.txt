@@ -1,0 +1,14 @@
+nohup: ignoring input
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+[Dataset:test] 캐시 로드: cache/frames_test.npz — 프레임 4643, 위험 93
+  Epoch 1  TrainLoss=2.9056  ValMAE=4.9375  ValRecall=0.0000
+  Epoch 2  TrainLoss=2.5717  ValMAE=1.9910  ValRecall=0.0000
+  Epoch 3  TrainLoss=1.7882  ValMAE=1.5588  ValRecall=0.0000
+
+====================================================
+[4.3 체크포인트 편향]
+  검증최저 에폭 3: ValRecall=0.0000
+  마지막 에폭 3: ValRecall=0.0000
+  → 검증최저 에폭의 재현율이 더 낮으면 best선택이 편향
+====================================================

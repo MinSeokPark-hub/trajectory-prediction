@@ -1,0 +1,9 @@
+nohup: ignoring input
+
+===== CTRV 라벨 D vs 직선 라벨 C (전체, 3초) =====
+  C 위험 프레임 : 658
+  D 위험 프레임 : 488
+  합집합        : 860
+  둘 다 위험    : 286  (33% 합의)
+
+[Saved] preds/label_D_test.npz

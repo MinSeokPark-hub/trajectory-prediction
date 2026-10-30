@@ -1,0 +1,13 @@
+nohup: ignoring input
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+[Dataset:test] 캐시 로드: cache/frames_test.npz — 프레임 4643, 위험 93
+  Epoch 1  TrainLoss=1.6637  ValMAE=0.9582  ValRecall=0.0000
+  Epoch 2  TrainLoss=1.0348  ValMAE=1.0108  ValRecall=0.0000
+  Epoch 3  TrainLoss=1.0018  ValMAE=0.8390  ValRecall=0.0000
+
+====================================================
+[4.2 무가중 손실] test
+  MAE = 0.8131,  위험재현율 = 0.0000
+  → MAE 낮아도 재현율 낮으면 MAE가 부적절 지표라는 근거
+====================================================

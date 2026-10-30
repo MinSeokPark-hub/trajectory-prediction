@@ -1,0 +1,52 @@
+[NuScenes] Loading v1.0-trainval ...
+[Dataset:train] 캐시 로드: cache/frames_train.npz — 프레임 21503, 위험 474
+  Train frames: 21503
+[Dataset:val] 캐시 로드: cache/frames_val.npz — 프레임 4596, 위험 91
+  Val frames: 4596
+[Train] Device cuda  Mode full  Seed 42
+  E1 Step 0/1344  Loss=4.2830  8s
+  E1 Step 100/1344  Loss=2.2214  81s
+  E1 Step 200/1344  Loss=4.4645  162s
+  E1 Step 300/1344  Loss=1.7470  238s
+  E1 Step 400/1344  Loss=4.3065  317s
+  E1 Step 500/1344  Loss=1.7319  401s
+  E1 Step 600/1344  Loss=2.0272  493s
+  E1 Step 700/1344  Loss=3.9478  582s
+  E1 Step 800/1344  Loss=1.7640  670s
+  E1 Step 900/1344  Loss=1.9222  758s
+  E1 Step 1000/1344  Loss=1.9952  838s
+  E1 Step 1100/1344  Loss=1.9570  925s
+  E1 Step 1200/1344  Loss=1.7983  1002s
+  E1 Step 1300/1344  Loss=2.1579  1077s
+Epoch 1  TrainLoss=2.9056  ValLoss=2.7245
+  E2 Step 0/1344  Loss=4.6048  10s
+  E2 Step 100/1344  Loss=3.6003  97s
+  E2 Step 200/1344  Loss=3.3223  181s
+  E2 Step 300/1344  Loss=5.6553  264s
+  E2 Step 400/1344  Loss=0.6560  342s
+  E2 Step 500/1344  Loss=0.5830  420s
+  E2 Step 600/1344  Loss=1.1993  500s
+  E2 Step 700/1344  Loss=2.5070  577s
+  E2 Step 800/1344  Loss=0.7672  654s
+  E2 Step 900/1344  Loss=0.6649  727s
+  E2 Step 1000/1344  Loss=0.5670  802s
+  E2 Step 1100/1344  Loss=0.7692  882s
+  E2 Step 1200/1344  Loss=0.8782  959s
+  E2 Step 1300/1344  Loss=0.4423  1038s
+Epoch 2  TrainLoss=2.5733  ValLoss=3.1778
+  E3 Step 0/1344  Loss=3.9514  7s
+  E3 Step 100/1344  Loss=0.5032  79s
+  E3 Step 200/1344  Loss=3.1174  151s
+  E3 Step 300/1344  Loss=0.4511  225s
+  E3 Step 400/1344  Loss=0.5155  299s
+  E3 Step 500/1344  Loss=1.0748  375s
+  E3 Step 600/1344  Loss=6.8811  449s
+  E3 Step 700/1344  Loss=1.5036  523s
+  E3 Step 800/1344  Loss=0.4577  598s
+  E3 Step 900/1344  Loss=0.5581  670s
+  E3 Step 1000/1344  Loss=0.7328  744s
+  E3 Step 1100/1344  Loss=6.7109  813s
+  E3 Step 1200/1344  Loss=2.7898  880s
+  E3 Step 1300/1344  Loss=0.5948  949s
+Epoch 3  TrainLoss=1.7944  ValLoss=4.3013
+[Done] full_seed42  (마지막 epoch 모델: checkpoints/last_full_seed42.pt)
