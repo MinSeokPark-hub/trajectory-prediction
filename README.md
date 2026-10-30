@@ -29,14 +29,25 @@ trajectory-prediction/
 │   ├── train_simple_ttc.py     # SimpleTTC 모델 학습
 │   ├── train_simple_ttc_v2.py  # SimpleTTC v2 학습
 │   ├── train_paper.py          # [논문 재현] 자차 운동 기반 TTC 학습 (Weighted L1)
-│   ├── evaluate_paper.py       # [논문 재현] AP·Danger Recall·MAE·Bootstrap CI 평가
+│   ├── evaluate_paper.py       # [논문 재현] AP·Danger Recall·MAE 평가 + pred 저장
+│   ├── verify_dataset.py       # [논문 재현] 프레임/위험 수를 표 3.1과 대조
 │   ├── visualize.py            # 궤적 시각화
 │   ├── visualize_sgan.py       # ETH/UCY 궤적 시각화
 │   ├── test_integration.py     # 통합 테스트
 │   ├── models/                              # [논문 재현] 모델 정의
 │   │   └── resnet_ttc.py       # ResNet-18 + ego-motion MLP (4가지 변형)
 │   ├── data/                                # [논문 재현] 데이터셋
-│   │   └── nuscenes_ttc_dataset.py  # nuScenes 씬 단위 분할 + SAT 라벨 Dataset
+│   │   └── nuscenes_ttc_dataset.py  # 프레임 단위 최소 TTC 라벨 + ego 표준화 Dataset
+│   ├── analysis/                            # [논문 재현] 분석 스크립트
+│   │   ├── summarize_results.py   # 표 5.1·5.2
+│   │   ├── baselines.py           # 기준선 3종
+│   │   ├── exploratory.py         # 표 5.3
+│   │   ├── linear_probe.py        # 4.4 R²
+│   │   ├── box_sensitivity.py     # 표 3.2
+│   │   ├── compute_label_d.py     # CTRV 대안 라벨 D
+│   │   ├── cd_agreement_row.py    # 표 5.3 C·D 합의 행
+│   │   ├── train_prelim.py        # 예비실험 4.1~4.3
+│   │   └── visual_check.py        # 표 3.5 패널 생성
 │   ├── predictors/
 │   │   ├── simple_ttc.py       # SimpleTTC MLP (픽셀 기반 TTC 직접 예측)
 │   │   ├── lstm_predictor.py   # LSTM 3D 궤적 예측 모델
@@ -62,6 +73,11 @@ trajectory-prediction/
 │       └── validate_performance.py # T15/T18 레이턴시·FPS 성능 검증
 │
 ├── models/                     # 학습된 모델 및 스케일러 파일
+├── cache/                      # [논문 재현] 프레임 라벨·ego 통계·기하 캐시
+├── preds/                      # [논문 재현] 모델별 예측·CTRV 라벨 D
+├── visual_check/               # [논문 재현] 위험 프레임 패널 + verdicts.csv
+├── run_phase2.sh               # [논문 재현] 20회 학습 다중 GPU 런처
+├── run_eval.sh                 # [논문 재현] 20회 평가 런처
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
@@ -164,16 +180,33 @@ graph TD
 
 논문 「단안 영상 기반 TTC 추정에서 자차 운동 정보의 효과」를 재현한 **독립 실험 모듈**입니다. 메인 파이프라인(Streamlit·LSTM·앙상블)과 별개로, ResNet-18 이미지 인코더에 자차 운동(ego-motion) 특징을 결합해 TTC를 직접 회귀하고, **자차 운동 정보가 TTC 추정에 기여하는지**를 4가지 변형으로 비교합니다.
 
-### 구성 파일
+> **재현 완료** (nuScenes v1.0-trainval 전체 30,742 프레임, 4모델×5seed=20회 학습, 전 분석 실행). 계산 결과·캐시·판정은 `cache/`·`preds/`·`visual_check/`·`logs/`에 포함되어 있습니다. 체크포인트(`.pt`)는 용량상 제외(코드+데이터로 재생성 가능).
+
+### 핵심 파일
 
 | 파일 | 역할 |
 |------|------|
-| `src/utils/sat_ttc.py` | SAT(분리축 정리) 기반 GT TTC 라벨 계산 (상한 10초) |
-| `src/utils/ego_motion.py` | 자차 운동 20차원 특징 추출 (4프레임 × 5특징: speed·종가속도·회전율·dx·dy) |
+| `src/utils/sat_ttc.py` | SAT 기반 GT TTC 라벨 (전방 추돌 부호 오류 수정판) |
+| `src/utils/ego_motion.py` | 자차 운동 20차원 특징 (4프레임 × 5특징: speed·종가속도·회전율·dx·dy) |
 | `src/models/resnet_ttc.py` | ResNet-18(ImageNet) + ego-motion MLP, 4가지 변형 공유 구조 |
-| `src/data/nuscenes_ttc_dataset.py` | nuScenes 씬 단위 분할(70/15/15, seed=2024) Dataset |
-| `src/train_paper.py` | Weighted L1 Loss 학습 (17.53 / 6.96 / 0.36) |
-| `src/evaluate_paper.py` | AP · Danger Recall · MAE · Bootstrap CI 평가 |
+| `src/data/nuscenes_ttc_dataset.py` | **프레임 단위 최소 TTC 라벨**, 후보 객체 필터(가시·LiDAR·속도·6범주), ego 표준화, 키프레임 기반 Dataset (씬 분할 70/15/15, seed 2024) |
+| `src/train_paper.py` | Weighted L1(17.53/6.96/0.36), 5 seed, 1 epoch 백본 freeze, 마지막 에폭 사용 |
+| `src/evaluate_paper.py` | AP · Danger Recall · MAE 평가 + pred 저장 |
+| `src/verify_dataset.py` | 프레임/위험 수를 논문 표 3.1과 대조 |
+
+### 분석 스크립트 (`src/analysis/`)
+
+| 파일 | 산출 |
+|------|------|
+| `summarize_results.py` | 표 5.1(모델 성능) + 표 5.2(장면 bootstrap Δ) |
+| `baselines.py` | 기준선 3종(상수예측기·회전속도·GBDT) |
+| `exploratory.py` | 표 5.3(직진/회전, 2·4초 기준별 ΔAP) |
+| `linear_probe.py` | 4.4 이미지특징→자차운동 R² |
+| `box_sensitivity.py` | 표 3.2 자차 박스 설정 민감도 |
+| `compute_label_d.py` | CTRV 대안 라벨 D + C·D 합의율 |
+| `cd_agreement_row.py` | 표 5.3 'C·D 합의 직진' 행 |
+| `train_prelim.py` | 예비실험 4.1(객체라벨)·4.2(무가중)·4.3(체크포인트) |
+| `visual_check.py` | 표 3.5 위험 프레임 시각 확인 패널 생성 |
 
 ### 모델 변형 4종
 
@@ -184,17 +217,33 @@ graph TD
 | `velocity_only` | 이미지 + 속도(speed)만 | 속도 정보만의 기여 |
 | `full` | 이미지 + 전체 ego 20차원 | 전체 자차 운동 정보 |
 
-### 실행 방법
+### 재현 파이프라인
 
-학습 (모드별 개별 실행):
 ```bash
-python src/train_paper.py --dataroot /path/to/nuscenes --mode full --epochs 3 --batch 16
-# mode: image_only | dummy | velocity_only | full
+# 1) 라벨 캐시 생성 + 논문 표 3.1 대조
+python src/verify_dataset.py
+
+# 2) 주 실험: 4모델 × 5seed = 20회 학습 (다중 GPU 분배)
+bash run_phase2.sh            # GPU 0/3/6/7에 분배
+
+# 3) 평가 20회 (pred 저장)
+bash run_eval.sh
+
+# 4) 분석 (표 채우기)
+python src/analysis/summarize_results.py --split test   # 표 5.1·5.2
+python src/analysis/exploratory.py --split test         # 표 5.3
+python src/analysis/baselines.py --split test           # 기준선
+python src/analysis/linear_probe.py --ckpt checkpoints/last_full_seed42.pt
+python src/analysis/box_sensitivity.py                  # 표 3.2
+python src/analysis/compute_label_d.py                  # CTRV
+python src/analysis/cd_agreement_row.py                 # 표 5.3 C·D 행
+python src/analysis/visual_check.py --n 40              # 표 3.5 패널
 ```
 
-평가 (test·val split 지원):
+개별 학습/평가:
 ```bash
-python src/evaluate_paper.py --dataroot /path/to/nuscenes --ckpt checkpoints/best_full.pt --mode full --split test
+python src/train_paper.py --mode full --seed 42        # mode: image_only|dummy|velocity_only|full
+python src/evaluate_paper.py --mode full --seed 42 --split test
 ```
 
 ### 평가 지표
@@ -206,9 +255,23 @@ python src/evaluate_paper.py --dataroot /path/to/nuscenes --ckpt checkpoints/bes
 | **MAE** | \|예측 TTC − GT TTC\| 평균 (초) |
 | **Bootstrap AP** | 씬 단위 AP를 1,000회 재표집한 평균·95% 신뢰구간 |
 
+### 주요 결과 (본 재현, 평가 데이터)
+
+| 항목 | 값 |
+|------|-----|
+| 사용 프레임 / 위험 | 30,742 / 658 (2.14%) |
+| 상수예측기 MAE / 재현율 | 0.68 / 0.00 (MAE 지표의 한계 입증) |
+| full − dummy ΔAP | +0.037 [+0.003, +0.068] · **구분됨** |
+| velocity_only − dummy ΔAP | +0.033 [+0.002, +0.070] · **구분됨** |
+| 직진 구간 ΔAP (전체−dummy) | +0.009 [−0.019, +0.046] · 약함 |
+| C·D(직선·CTRV) 라벨 합의율 | 33% |
+| 시각 확인 타당 비율 (직진/회전) | 27% / 21% |
+
+**결론 요약**: 자차 운동 정보(특히 속도)는 주 분석에서 대조 모델보다 AP를 유의미하게 높였으나, 회전 라벨 인공물이 작은 직진 구간에서는 이득이 약해져 **실제 효과와 라벨 인공물의 혼합**으로 해석된다. 또한 라벨 자체의 노이즈가 커(시각 확인 타당 25%, C·D 합의 33%) AP 이득을 실제 충돌 감지 능력으로 직결할 때 주의가 필요하다.
+
 ### 데이터 요구사항
 
-nuScenes **v1.0-trainval 전체(blobs 01~10)** 기준으로 설계되었습니다. 일부 blob만으로 학습하면 test/val split에 위험 샘플(TTC<3s)이 희박하여 **Danger Recall이 0에 수렴**하고 AP가 통계적으로 유의미하지 않게 나옵니다. 유의미한 모드 비교를 위해서는 충분한 blob 확보가 필요합니다. 코드는 CAM_FRONT 이미지 존재 여부를 자동 반영하므로, blob 추가 후 캐시(`cache/*.json`)만 재생성하면 그대로 동작합니다.
+nuScenes **v1.0-trainval 전체(850 씬, CAM_FRONT 키프레임 34,149장)** 를 사용한다. 키프레임만 필요하므로 `Keyframe blobs only` 다운로드로 충분하다. 라벨 캐시(`cache/frames_*.npz`, `ego_stats.npz`)는 저장소에 포함되어 있어, nuScenes 메타데이터와 CAM_FRONT 이미지만 있으면 재학습 없이 분석을 재현할 수 있다.
 
 ---
 
